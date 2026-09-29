@@ -367,7 +367,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
         <span style="font-size:9.5px;color:#94a3b8;font-weight:normal">(空白と改行抜き)</span>
       </div>
       <div style="width:1px;height:12px;background:var(--sidebar-border,#cbd5e1);margin:0 5px;flex-shrink:0"></div>
-      <div style="display:flex;align-items:center;gap:4px;line-height:1.2;font-size:11px" title="【セリフの文字数カウントルール】&#10;1. 抽出対象: 「」または『』で囲まれた部分&#10;2. 括弧の扱い: セリフ両端の括弧自体もカウント（各1文字）&#10;3. 空白の除外: 内部の空白・改行は除外&#10;4. 重複の禁止: 入れ子の括弧は重複カウントなし">
+      <div style="display:flex;align-items:center;gap:4px;line-height:1.2;font-size:11px" title="【セリフの文字数カウントルール】&#10;1. 抽出対象: 「」『』（）(）で囲まれた部分&#10;2. 括弧の扱い: セリフ両端の括弧自体もカウント（各1文字）&#10;3. 空白の除外: 内部の空白・改行は除外&#10;4. 重複の禁止: 入れ子の括弧は重複カウントなし&#10;5. 丸括弧は閉じるまでカウントしない">
         <span style="font-size:10px;color:var(--text-color,#64748b);opacity:0.75;font-weight:500">セリフ</span>
         <span style="font-weight:bold;font-size:11.5px;color:var(--text-color,#0f172a)">0文字</span>
         <span style="font-size:9px;color:#94a3b8;font-weight:normal;cursor:help">(定義注意)</span>
@@ -514,7 +514,8 @@ const APP_REVISIONS = [
     { n: 21, date: '2026-09-23', text: 'repaint方法をtransform(translateZ)からopacityの微小変更に変更' },
     { n: 22, date: '2026-09-23', text: '実機での検証により「新規作成」時のカーソル1マス目戻りバグを解消。全角スペースを1マス目手前に先置きし、入力/IME確定/ファイル切替時に安全に除去する方式（ユーザー様ご提供の修正を採用）' },
     { n: 23, date: '2026-09-23', text: '調査経緯と既知の制限をコード内コメント・README.mdに記録（新規作成のみ対応／削除後の再入力とサイズ変更後は未対応であることを明記）' },
-    { n: 24, date: '2026-09-24', text: '「検出と変換」ボタンを押してもメニューが出ない不具合を修正（メニューが画面右端の外側に開いていたため。ボタンの左側に表示するよう位置計算を変更）' }
+    { n: 24, date: '2026-09-24', text: '「検出と変換」ボタンを押してもメニューが出ない不具合を修正（メニューが画面右端の外側に開いていたため。ボタンの左側に表示するよう位置計算を変更）' },
+    { n: 25, date: '2026-09-30', text: 'セリフ文字数カウントに丸括弧「(）」「（）」を追加。「」『』と同様、開閉が揃った時点で括弧自体も含めてカウント（例：(あ、あ)＝5文字）' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -2313,10 +2314,10 @@ function countDialogueChars(fullText){
     let depth = 0;
     for(let i = 0; i < fullText.length; i++){
         let ch = fullText[i];
-        if(ch === '「' || ch === '『'){
+        if(ch === '「' || ch === '『' || ch === '(' || ch === '（'){
             depth++;
             pending++;
-        } else if(ch === '」' || ch === '』'){
+        } else if(ch === '」' || ch === '』' || ch === ')' || ch === '）'){
             if(depth > 0){
                 pending++;
                 depth--;
@@ -2487,7 +2488,7 @@ function updateCharCount(){
                 <span style="font-size:9.5px;color:#94a3b8;font-weight:normal">(空白と改行抜き)</span>
             </div>
             <div style="width:1px;height:12px;background:#cbd5e1;margin:0 5px;flex-shrink:0"></div>
-            <div style="display:flex;align-items:center;gap:4px;line-height:1.2;font-size:11px" title="【セリフの文字数カウントルール】&#10;1. 抽出対象: 「」または『』で囲まれた部分&#10;2. 括弧の扱い: セリフ両端の括弧自体もカウント（各1文字）&#10;3. 空白の除外: 内部の空白・改行は除外&#10;4. 重複の禁止: 入れ子の括弧は重複カウントなし">
+            <div style="display:flex;align-items:center;gap:4px;line-height:1.2;font-size:11px" title="【セリフの文字数カウントルール】&#10;1. 抽出対象: 「」『』（）(）で囲まれた部分&#10;2. 括弧の扱い: セリフ両端の括弧自体もカウント（各1文字）&#10;3. 空白の除外: 内部の空白・改行は除外&#10;4. 重複の禁止: 入れ子の括弧は重複カウントなし&#10;5. 丸括弧は閉じるまでカウントしない">
                 <span style="font-size:10px;color:#64748b;font-weight:500">セリフ</span>
                 <span style="font-weight:bold;font-size:11.5px;color:var(--text-color,#0f172a)">${st.dialogueChars.toLocaleString()}文字</span>
                 <span style="font-size:9px;color:#94a3b8;font-weight:normal;cursor:help">(定義注意)</span>
@@ -7753,12 +7754,13 @@ const noticeText2 = `【注意事項2】
 
 1️⃣【セリフの文字数カウントルール】
 1. 抽出対象：
-   「 」（かぎ括弧）または『 』（二重かぎ括弧）で囲まれた部分を「セリフ」として抽出。
+   「 」（かぎ括弧）、『 』（二重かぎ括弧）、( )または（ ）（丸括弧）で囲まれた部分を「セリフ」として抽出。
 
-そのため、「絵画名」などと強調するために書いた場合、これも含まれてしまいますのでご注意。
+そのため、「絵画名」や(補足)などと強調するために書いた場合、これも含まれてしまいますのでご注意。
 
 2. 括弧の扱い
-   セリフの両端にある括弧（「 」や『 』）自体も、それぞれ1文字（合計2文字）としてカウント。
+   セリフの両端にある括弧（「 」『 』( )（ ）いずれも）自体も、それぞれ1文字（合計2文字）としてカウント。
+   丸括弧は、開き・閉じの両方が揃うまではカウントされません（「」『』と同じ扱い）。
 
 3. 空白の除外
    セリフの内部に含まれるスペース（全角・半角スペース、改行）は、文字数にカウントしない。
@@ -7772,6 +7774,7 @@ const noticeText2 = `【注意事項2】
 ・「あい　う」 ── 5文字（括弧2文字 ＋ 中身3文字 ※空白は除外）
 ・「あい『うえお』」 ── 9文字（外側括弧2文字 ＋ 内側括弧2文字 ＋ 文字5文字）
 ・『あい「うえお」』 ── 9文字（外側括弧2文字 ＋ 内側括弧2文字 ＋ 文字5文字）
+・(あ、あ) ── 5文字（括弧2文字 ＋ 中身3文字）
 
 2️⃣ホモグラフ検出ボタン、隠し文字検出ボタンについて
 ・精度は高くないので、過信はしないでください。特にホモグラフ検出ボタンは改良を検討しています。
