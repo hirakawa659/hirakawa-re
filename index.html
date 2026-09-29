@@ -515,7 +515,8 @@ const APP_REVISIONS = [
     { n: 22, date: '2026-09-23', text: '実機での検証により「新規作成」時のカーソル1マス目戻りバグを解消。全角スペースを1マス目手前に先置きし、入力/IME確定/ファイル切替時に安全に除去する方式（ユーザー様ご提供の修正を採用）' },
     { n: 23, date: '2026-09-23', text: '調査経緯と既知の制限をコード内コメント・README.mdに記録（新規作成のみ対応／削除後の再入力とサイズ変更後は未対応であることを明記）' },
     { n: 24, date: '2026-09-24', text: '「検出と変換」ボタンを押してもメニューが出ない不具合を修正（メニューが画面右端の外側に開いていたため。ボタンの左側に表示するよう位置計算を変更）' },
-    { n: 25, date: '2026-09-30', text: 'セリフ文字数カウントに丸括弧「(）」「（）」を追加。「」『』と同様、開閉が揃った時点で括弧自体も含めてカウント（例：(あ、あ)＝5文字）' }
+    { n: 25, date: '2026-09-30', text: 'セリフ文字数カウントに丸括弧「(）」「（）」を追加。「」『』と同様、開閉が揃った時点で括弧自体も含めてカウント（例：(あ、あ)＝5文字）' },
+    { n: 26, date: '2026-09-30', text: '重大バグ修正：閉じ忘れの「や『が1個でもあると、それより後ろにある正常に閉じたセリフまで巻き込んで0文字になっていた不具合を修正。最後まで閉じられなかった括弧だけを無視する2パス方式に変更' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -2309,15 +2310,31 @@ function getEditorPureTextFromHtml(html){
 
 function countDialogueChars(fullText){
     if(!fullText) return 0;
+    const isOpen = ch => ch === '「' || ch === '『' || ch === '(' || ch === '（';
+    const isClose = ch => ch === '」' || ch === '』' || ch === ')' || ch === '）';
+
+    // 1パス目：最後まで閉じられなかった「孤立した開き括弧」の位置を特定する。
+    // （これが無いと、閉じ忘れ括弧が1個あるだけで、それより後ろにある
+    //   正常に閉じているセリフまで巻き込んで数えられなくなるバグがあった）
+    let openStack = [];
+    for(let i = 0; i < fullText.length; i++){
+        let ch = fullText[i];
+        if(isOpen(ch)) openStack.push(i);
+        else if(isClose(ch)) { if(openStack.length > 0) openStack.pop(); }
+    }
+    let orphanOpenIdx = new Set(openStack); // 最後まで相手が見つからなかった開き括弧
+
+    // 2パス目：孤立した開き括弧は「最初から無かったもの」として無視しつつ、通常通りカウントする
     let count = 0;      // 確定カウント（閉じ括弧が来た「」ペアの分だけ）
     let pending = 0;    // 開いた括弧の中で、まだ閉じていない分の暫定カウント
     let depth = 0;
     for(let i = 0; i < fullText.length; i++){
         let ch = fullText[i];
-        if(ch === '「' || ch === '『' || ch === '(' || ch === '（'){
+        if(orphanOpenIdx.has(i)) continue;
+        if(isOpen(ch)){
             depth++;
             pending++;
-        } else if(ch === '」' || ch === '』' || ch === ')' || ch === '）'){
+        } else if(isClose(ch)){
             if(depth > 0){
                 pending++;
                 depth--;
