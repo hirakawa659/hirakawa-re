@@ -201,7 +201,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
 .shelf-note-card-wrap:hover .shelf-note-card{transform:translateY(-3px);box-shadow:0 8px 18px rgba(0,0,0,0.1),0 2px 5px rgba(0,0,0,0.05);border-color:rgba(0,0,0,0.2)}
 .shelf-note-card-wrap:active .shelf-note-card{transform:scale(0.96)}
 .shelf-note-body-spacer{flex:1}
-.shelf-note-meta{font-size:10px;color:var(--shelf-item-text,#94a3b8);opacity:0.8;font-weight:600;display:flex;align-items:center;justify-content:flex-end}
+.shelf-note-meta{font-size:10px;color:var(--shelf-item-text,#94a3b8);opacity:0.8;font-weight:600;display:flex;flex-direction:column;align-items:flex-end;gap:1px}
 .shelf-note-title{font-size:12px;font-weight:600;color:var(--shelf-title-color,#1e293b);margin-top:6px;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.25}
 .shelf-card-info-btn{background:#ffffff;border:1px solid #cbd5e1;border-radius:4px;font-size:10px;padding:1px 4px;cursor:pointer;line-height:1.2;color:#475569;transition:background 0.1s ease,border-color 0.1s ease}
 .shelf-card-info-btn:hover{background:#f1f5f9;border-color:#94a3b8;color:#0f172a}
@@ -323,7 +323,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
           フォルダ
         </span>
       </div>
-      <div id="shelfFoldersGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(110px, 1fr));gap:14px;align-items:start"></div>
+      <div id="shelfFoldersGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(max(110px, calc((100% - 4*14px)/5)), 1fr));gap:14px;align-items:start"></div>
     </div>
     <div id="shelfNotesSec" style="display:none">
       <div style="font-size:12.5px;font-weight:bold;color:#334155;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
@@ -335,7 +335,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
           <span id="shelfNotesCount" style="font-size:11px;font-weight:normal;color:#94a3b8"></span>
         </div>
       </div>
-      <div id="shelfNotesGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(110px, 135px));gap:16px;align-items:start"></div>
+      <div id="shelfNotesGrid" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(max(110px, calc((100% - 4*16px)/5)), 1fr));gap:16px;align-items:start"></div>
     </div>
     <div id="shelfEmptyMsg" style="display:none;padding:48px 16px;text-align:center;color:#94a3b8;font-size:13px">
       このフォルダにはまだ項目がありません。<br>
@@ -516,7 +516,9 @@ const APP_REVISIONS = [
     { n: 23, date: '2026-09-23', text: '調査経緯と既知の制限をコード内コメント・README.mdに記録（新規作成のみ対応／削除後の再入力とサイズ変更後は未対応であることを明記）' },
     { n: 24, date: '2026-09-24', text: '「検出と変換」ボタンを押してもメニューが出ない不具合を修正（メニューが画面右端の外側に開いていたため。ボタンの左側に表示するよう位置計算を変更）' },
     { n: 25, date: '2026-09-30', text: 'セリフ文字数カウントに丸括弧「(）」「（）」を追加。「」『』と同様、開閉が揃った時点で括弧自体も含めてカウント（例：(あ、あ)＝5文字）' },
-    { n: 26, date: '2026-09-30', text: '重大バグ修正：閉じ忘れの「や『が1個でもあると、それより後ろにある正常に閉じたセリフまで巻き込んで0文字になっていた不具合を修正。最後まで閉じられなかった括弧だけを無視する2パス方式に変更' }
+    { n: 26, date: '2026-09-30', text: '重大バグ修正：閉じ忘れの「や『が1個でもあると、それより後ろにある正常に閉じたセリフまで巻き込んで0文字になっていた不具合を修正。最後まで閉じられなかった括弧だけを無視する2パス方式に変更' },
+    { n: 27, date: '2026-09-30', text: 'フォルダ領域の「フォルダ」「紙」カードグリッドを最大5列に固定（画面が広くても6列以上には増えず、カード幅が確保されてタイトルが途切れにくくなった）' },
+    { n: 28, date: '2026-09-30', text: '紙カードの文字数表示が「1,695文」「字」のように単語途中で折り返されていたのを修正。1行目「○○文字」、2行目「(空白と改行抜き)」の縦積みに変更' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -1146,7 +1148,7 @@ function renderShelfView(){
                     </div>
                     <div class="shelf-note-body-spacer"></div>
                     <div class="shelf-note-meta">
-                        <span>${st.withoutSpaces.toLocaleString()}文字</span><span style="font-size:9.5px;opacity:0.75;font-weight:normal;margin-left:2px">(空白と改行抜き)</span>
+                        <span style="white-space:nowrap">${st.withoutSpaces.toLocaleString()}文字</span><span style="font-size:9.5px;opacity:0.75;font-weight:normal;white-space:nowrap">(空白と改行抜き)</span>
                     </div>
                 </div>
                 <div class="shelf-note-title" title="${escapeHtml(nt.name)}">${escapeHtml(nt.name || '無題')}</div>
