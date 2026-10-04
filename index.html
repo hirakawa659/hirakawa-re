@@ -518,7 +518,9 @@ const APP_REVISIONS = [
     { n: 25, date: '2026-09-30', text: 'セリフ文字数カウントに丸括弧「(）」「（）」を追加。「」『』と同様、開閉が揃った時点で括弧自体も含めてカウント（例：(あ、あ)＝5文字）' },
     { n: 26, date: '2026-09-30', text: '重大バグ修正：閉じ忘れの「や『が1個でもあると、それより後ろにある正常に閉じたセリフまで巻き込んで0文字になっていた不具合を修正。最後まで閉じられなかった括弧だけを無視する2パス方式に変更' },
     { n: 27, date: '2026-09-30', text: 'フォルダ領域の「フォルダ」「紙」カードグリッドを最大5列に固定（画面が広くても6列以上には増えず、カード幅が確保されてタイトルが途切れにくくなった）' },
-    { n: 28, date: '2026-09-30', text: '紙カードの文字数表示が「1,695文」「字」のように単語途中で折り返されていたのを修正。1行目「○○文字」、2行目「(空白と改行抜き)」の縦積みに変更' }
+    { n: 28, date: '2026-09-30', text: '紙カードの文字数表示が「1,695文」「字」のように単語途中で折り返されていたのを修正。1行目「○○文字」、2行目「(空白と改行抜き)」の縦積みに変更' },
+    { n: 29, date: '2026-09-30', text: 'タブ切替復帰時のスクロール位置ズレ対策を強化。固定ディレイ(60〜1200ms)だけに頼らず、ResizeObserverでレイアウト変化を検知して同じ目標位置へ再補正する仕組みを追加（既存のタイマー処理・ジャンプガードは変更なし、1500msの許可ウィンドウ内に収まるよう統一）' },
+    { n: 30, date: '2026-09-30', text: 'n29のResizeObserverを80msデバウンス化。キーボード開閉アニメーション等でresizeが連続発火する最中に毎回補正をかけて画面がガタつくのを防止（変化が収まってから1回だけ再補正する）' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -7579,6 +7581,7 @@ function initScrollTracker(){
 let restoreScrollToken = 0;
 let restoreScrollTimers = [];
 let lastRestoreCallAt = 0;
+let activeRestoreObserver = null;
 
 // 進行中のスクロール復元を完全に中止（ユーザーが触れた時・新しい復元が始まった時）
 function cancelScrollRestore(){
@@ -7586,6 +7589,7 @@ function cancelScrollRestore(){
     restoreScrollTimers.forEach(t => clearTimeout(t));
     restoreScrollTimers = [];
     isRestoringAppScroll = false;
+    if(activeRestoreObserver){ try{ activeRestoreObserver.disconnect(); }catch(err){} activeRestoreObserver = null; }
 }
 
 function logRestoreScrollCall(kind, extra){
@@ -7632,14 +7636,42 @@ function restoreAppScroll(force = false){
     requestAnimationFrame(applyScroll);
 
     const delays = [60, 180, 400, 800, 1200];
-    delays.forEach((delay, i) => {
-        restoreScrollTimers.push(setTimeout(() => {
-            applyScroll();
-            if(i === delays.length - 1 && myToken === restoreScrollToken){
-                isRestoringAppScroll = false;
-            }
-        }, delay));
+    delays.forEach((delay) => {
+        restoreScrollTimers.push(setTimeout(applyScroll, delay));
     });
+
+    // 追加の保険：決め打ちディレイのタイミングに間に合わず位置がズレるケースに対応。
+    // キーボードの開閉アニメーションや文字の再描画など、実際にレイアウトが
+    // 変化した「その瞬間」を検知して再補正する（既存のタイマー処理には一切手を加えない追加処理）
+    if(activeRestoreObserver){ try{ activeRestoreObserver.disconnect(); }catch(err){} activeRestoreObserver = null; }
+    if(typeof ResizeObserver !== 'undefined'){
+        let roDebounceTimer = null;
+        const ro = new ResizeObserver(() => {
+            if(myToken !== restoreScrollToken){
+                try{ ro.disconnect(); }catch(err){}
+                if(activeRestoreObserver === ro) activeRestoreObserver = null;
+                return;
+            }
+            // キーボード開閉アニメーション等でresizeが連続発火する間は待ち、
+            // 変化が収まってから1回だけ補正する（連続補正によるガタつき防止）
+            if(roDebounceTimer) clearTimeout(roDebounceTimer);
+            roDebounceTimer = setTimeout(() => {
+                if(myToken === restoreScrollToken) applyScroll();
+            }, 80);
+        });
+        try {
+            ro.observe(mCont);
+            const wEl = document.getElementById('w');
+            if(wEl) ro.observe(wEl);
+            activeRestoreObserver = ro;
+        } catch(err){}
+    }
+
+    restoreScrollTimers.push(setTimeout(() => {
+        if(myToken !== restoreScrollToken) return;
+        isRestoringAppScroll = false;
+        if(activeRestoreObserver){ try{ activeRestoreObserver.disconnect(); }catch(err){} activeRestoreObserver = null; }
+    }, 1500));
 }
 
 function handleAppBackground(){
