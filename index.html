@@ -525,7 +525,8 @@ const APP_REVISIONS = [
     { n: 28, date: '2026-09-30', text: '紙カードの文字数表示が「1,695文」「字」のように単語途中で折り返されていたのを修正。1行目「○○文字」、2行目「(空白と改行抜き)」の縦積みに変更' },
     { n: 29, date: '2026-09-30', text: 'タブ切替復帰時のスクロール位置ズレ対策を強化。固定ディレイ(60〜1200ms)だけに頼らず、ResizeObserverでレイアウト変化を検知して同じ目標位置へ再補正する仕組みを追加（既存のタイマー処理・ジャンプガードは変更なし、1500msの許可ウィンドウ内に収まるよう統一）' },
     { n: 30, date: '2026-09-30', text: 'n29のResizeObserverを80msデバウンス化。キーボード開閉アニメーション等でresizeが連続発火する最中に毎回補正をかけて画面がガタつくのを防止（変化が収まってから1回だけ再補正する）' },
-    { n: 31, date: '2026-09-30', text: 'iPad等でPCの開発者ツールが使えなくても確認できるよう、ツールバーに「復元ログ」ボタンを追加。__restoreScrollLog / __scrollGuardLog の中身を画面に表示・コピーできる表示専用機能（スクロール処理のロジック自体には変更なし）' }
+    { n: 31, date: '2026-09-30', text: 'iPad等でPCの開発者ツールが使えなくても確認できるよう、ツールバーに「復元ログ」ボタンを追加。__restoreScrollLog / __scrollGuardLog の中身を画面に表示・コピーできる表示専用機能（スクロール処理のロジック自体には変更なし）' },
+    { n: 32, date: '2026-10-05', text: '重大バグ修正：タブ復帰時、z()（列幅再計算）とrestoreAppScroll()が同時に別々のタイミングでそれぞれ別の目標値を計算し、互いに異なる位置へ二重にジャンプして競合していた（実機ログで確認）。復帰処理中はz()側の独自ジャンプを休止し、restoreAppScrollの一本化された処理に委ねるよう修正。フラグが戻らず固着しないよう早期return経路も保護' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -2268,14 +2269,18 @@ function z(){
     ensureGridLines();
     updateColsDisplay();
     
-    if(m && targetScroll > 0){
+    // タブ復帰直後は restoreAppScroll() 側が同じ保存位置への復元を既に担当しているため、
+    // ここで z() が独自に（別タイミングで再計算した別の値へ）二重にジャンプすると、
+    // 2つの処理が競合して「上下にズレる／一瞬別の位置が見えてガタつく」原因になっていた。
+    // 復元中は z() 側のジャンプを休止し、restoreAppScroll の一本化された処理に任せる。
+    if(m && targetScroll > 0 && !isRestoringAppScroll){
         if(typeof allowScrollJump === 'function') allowScrollJump(1200);
         if(Math.abs(m.scrollTop - targetScroll) > 2){
             if(typeof logRestoreScrollCall === 'function') logRestoreScrollCall('z()-targetScroll', 'from='+m.scrollTop+' to='+targetScroll);
             m.scrollTop = targetScroll;
         }
         requestAnimationFrame(()=>{
-            if(m && Math.abs(m.scrollTop - targetScroll) > 2){
+            if(m && !isRestoringAppScroll && Math.abs(m.scrollTop - targetScroll) > 2){
                 m.scrollTop = targetScroll;
             }
         });
@@ -7691,8 +7696,8 @@ function copyScrollDebugLog(){
 
 function restoreAppScroll(force = false){
     const mCont = document.querySelector('.m');
-    if(!mCont) return;
-    if(mCont.clientWidth < 50 || mCont.clientHeight < 50){ logRestoreScrollCall('skip-hidden', 'force='+force); return; }
+    if(!mCont){ isRestoringAppScroll = false; return; }
+    if(mCont.clientWidth < 50 || mCont.clientHeight < 50){ logRestoreScrollCall('skip-hidden', 'force='+force); isRestoringAppScroll = false; return; }
     logRestoreScrollCall('called', 'force='+force+' scrollTop='+mCont.scrollTop);
 
     // visibilitychange / focus / pageshow / resume が同時に発火しても復元は1回にまとめる
@@ -7702,7 +7707,12 @@ function restoreAppScroll(force = false){
     lastRestoreCallAt = nowTs;
 
     let target = getSavedScrollTarget();
-    if(!(target > 0)) return;
+    if(!(target > 0)){
+        // RO側で先行して isRestoringAppScroll=true にしていた場合、ここで何もせず
+        // returnしてしまうとフラグが戻らず z() の補正が永久に止まってしまうため戻す
+        isRestoringAppScroll = false;
+        return;
+    }
     if(typeof allowScrollJump === 'function') allowScrollJump(1500);
 
     cancelScrollRestore();
@@ -7863,12 +7873,17 @@ if(window.ResizeObserver){
             return;
         }
         if(hiddenNow){ mWasHidden = true; if(typeof logRestoreScrollCall==='function') logRestoreScrollCall('RO-became-hidden',''); return; }
-        scheduleZ();
         if(mWasHidden){
             mWasHidden = false;
             lastResumeTime = Date.now();
+            // scheduleZ() 経由で後から走る z() が「今は復元処理中」と確実に判定できるよう、
+            // z() を予約するより先に同期的にフラグを立てておく（タイミング競合によるズレ防止）
+            isRestoringAppScroll = true;
             if(typeof logRestoreScrollCall === 'function') logRestoreScrollCall('RO-became-visible-forcing-restore','');
+            scheduleZ();
             requestAnimationFrame(()=>restoreAppScroll(true));
+        } else {
+            scheduleZ();
         }
     }).observe(obsEl);
 }
