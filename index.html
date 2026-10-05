@@ -528,7 +528,9 @@ const APP_REVISIONS = [
     { n: 31, date: '2026-09-30', text: 'iPad等でPCの開発者ツールが使えなくても確認できるよう、ツールバーに「復元ログ」ボタンを追加。__restoreScrollLog / __scrollGuardLog の中身を画面に表示・コピーできる表示専用機能（スクロール処理のロジック自体には変更なし）' },
     { n: 32, date: '2026-10-05', text: '重大バグ修正：タブ復帰時、z()（列幅再計算）とrestoreAppScroll()が同時に別々のタイミングでそれぞれ別の目標値を計算し、互いに異なる位置へ二重にジャンプして競合していた（実機ログで確認）。復帰処理中はz()側の独自ジャンプを休止し、restoreAppScrollの一本化された処理に委ねるよう修正。フラグが戻らず固着しないよう早期return経路も保護' },
     { n: 33, date: '2026-10-05', text: 'n32と同じ競合が起動時（アプリを開いた直後）にも発生していたのを実機ログで確認し修正。o(f)内部のz()呼び出し・起動処理内の明示的なz()呼び出し・o()自身の同一ファイル再読込時の独自ジャンプの3つが互いに異なる値で競合していたため、restoreAppScroll()に処理が一本化されるまでisRestoringAppScrollフラグで足並みを揃えるよう統一' },
-    { n: 34, date: '2026-10-05', text: 'iPadでアプリスイッチャーから復帰した際、window resize / visualViewport resize のイベントでもscheduleZ()とrestoreAppScroll()が同時発火して競合する経路が残っていたのを実機ログで確認し修正。RO復帰経路と同様、restoreAppScroll()を呼ぶ直前に先にフラグを立てるよう統一' }
+    { n: 34, date: '2026-10-05', text: 'iPadでアプリスイッチャーから復帰した際、window resize / visualViewport resize のイベントでもscheduleZ()とrestoreAppScroll()が同時発火して競合する経路が残っていたのを実機ログで確認し修正。RO復帰経路と同様、restoreAppScroll()を呼ぶ直前に先にフラグを立てるよう統一' },
+    { n: 35, date: '2026-10-05', text: '実機ログで、タブ復帰の数秒後にz()が無関係に独自ジャンプするケースを確認。iPad Safariのツールバーアニメーション等でresizeイベントが遅延発火し、その時点では復帰処理中フラグが既に戻っていたことが原因。resizeリスナー側は「編集中は復元処理を呼ばない」方針なのにz()だけ編集中かどうかを見ていなかった非対称性を解消し、復帰直後かつ編集中の場合はz()のジャンプも休止するよう統一' },
+    { n: 36, date: '2026-10-05', text: '離れていた時間が短い(3秒程度)と問題ないが長い(10秒程度)とズレるとの報告を受け対応。バックグラウンド時間が長いほどiOS Safari側のレイアウト安定に時間がかかることがあり、固定1500msで監視を打ち切る方式では間に合わないケースがあったため、実際にレイアウト変化が検知される限り監視・復帰中フラグを延長し続けるスライディングウィンドウ方式に変更（最長6秒の安全弁付き）' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -2278,7 +2280,15 @@ function z(){
     // 復元処理(restoreAppScroll)が既に同じ保存位置への復元を担当している間は、
     // z()が独自に（別タイミングで再計算した別の値へ）二重ジャンプしないようにする。
     // これが「上下にズレる／一瞬別の位置が見えてガタつく」競合の原因だった。
-    if(m && targetScroll > 0 && !isRestoringAppScroll){
+    //
+    // さらに、タブ復帰直後はiPadのSafariツールバーのアニメーション等でresizeイベントが
+    // 数秒遅れて発火することがあり、その時点では isRestoringAppScroll が既にfalseに
+    // 戻っているケースがあった。window resizeリスナー側は「編集中(カーソルが入力欄にある)
+    // 間は復元処理を呼ばない」という方針なのに、z()だけは編集中かどうかを見ずに無条件で
+    // ジャンプしてしまう非対称性があったため、ここでも同じ方針に揃える。
+    const recentlyResumed = (typeof lastResumeTime !== 'undefined') && (Date.now() - lastResumeTime < 2000);
+    const editingNow = (typeof isEditorFocused === 'function') && isEditorFocused();
+    if(m && targetScroll > 0 && !isRestoringAppScroll && !(recentlyResumed && editingNow)){
         if(typeof allowScrollJump === 'function') allowScrollJump(1200);
         if(Math.abs(m.scrollTop - targetScroll) > 2){
             if(typeof logRestoreScrollCall === 'function') logRestoreScrollCall('z()-targetScroll', 'from='+m.scrollTop+' to='+targetScroll);
@@ -7744,6 +7754,24 @@ function restoreAppScroll(force = false){
         restoreScrollTimers.push(setTimeout(applyScroll, delay));
     });
 
+    // 監視の終了を「固定1500ms」ではなく、実際に変化が続く限り延長する
+    // スライディングウィンドウ方式にする。長時間バックグラウンドに回った後は
+    // iOS Safari側のレイアウト安定に通常より時間がかかることがあり（実機で確認：
+    // 数秒離れただけなら即座に安定するが、10秒程度離れると安定まで数秒かかるケースがあった）、
+    // 固定時間で監視を打ち切るとその間のズレを拾いきれなかったため。
+    const restoreStartedAt = Date.now();
+    const MAX_RESTORE_WINDOW = 6000; // 何かがずっと変化し続けても、これ以上は監視し続けない安全弁
+    let finishTimer = null;
+    const scheduleFinish = (delay) => {
+        if(finishTimer) clearTimeout(finishTimer);
+        finishTimer = setTimeout(() => {
+            if(myToken !== restoreScrollToken) return;
+            isRestoringAppScroll = false;
+            if(activeRestoreObserver){ try{ activeRestoreObserver.disconnect(); }catch(err){} activeRestoreObserver = null; }
+        }, delay);
+        restoreScrollTimers.push(finishTimer);
+    };
+
     // 追加の保険：決め打ちディレイのタイミングに間に合わず位置がズレるケースに対応。
     // キーボードの開閉アニメーションや文字の再描画など、実際にレイアウトが
     // 変化した「その瞬間」を検知して再補正する（既存のタイマー処理には一切手を加えない追加処理）
@@ -7760,7 +7788,15 @@ function restoreAppScroll(force = false){
             // 変化が収まってから1回だけ補正する（連続補正によるガタつき防止）
             if(roDebounceTimer) clearTimeout(roDebounceTimer);
             roDebounceTimer = setTimeout(() => {
-                if(myToken === restoreScrollToken) applyScroll();
+                if(myToken !== restoreScrollToken) return;
+                applyScroll();
+                // 実際に変化があった＝まだ安定していないということなので、
+                // z()側の「復帰直後」判定(lastResumeTime基準)も合わせて延長しつつ、
+                // 監視そのものも安全弁の範囲内で延長する
+                lastResumeTime = Date.now();
+                if(Date.now() - restoreStartedAt < MAX_RESTORE_WINDOW){
+                    scheduleFinish(1500);
+                }
             }, 80);
         });
         try {
@@ -7771,11 +7807,7 @@ function restoreAppScroll(force = false){
         } catch(err){}
     }
 
-    restoreScrollTimers.push(setTimeout(() => {
-        if(myToken !== restoreScrollToken) return;
-        isRestoringAppScroll = false;
-        if(activeRestoreObserver){ try{ activeRestoreObserver.disconnect(); }catch(err){} activeRestoreObserver = null; }
-    }, 1500));
+    scheduleFinish(1500);
 }
 
 function handleAppBackground(){
