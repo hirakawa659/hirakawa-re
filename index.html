@@ -533,7 +533,8 @@ const APP_REVISIONS = [
     { n: 36, date: '2026-10-05', text: '離れていた時間が短い(3秒程度)と問題ないが長い(10秒程度)とズレるとの報告を受け対応。バックグラウンド時間が長いほどiOS Safari側のレイアウト安定に時間がかかることがあり、固定1500msで監視を打ち切る方式では間に合わないケースがあったため、実際にレイアウト変化が検知される限り監視・復帰中フラグを延長し続けるスライディングウィンドウ方式に変更（最長6秒の安全弁付き）' },
     { n: 37, date: '2026-10-05', text: '重大バグ修正：実機ログで、復帰後しばらく経ってもz()が特定の数値間(例：4999⇔3749)を何度も往復し続けるフィードバックループを確認。スクロールバーの出現等による数px単位の幅の揺れでz()の再計算→幅変化→再計算…が無限に連鎖していたとみられる。幅の変化をしきい値(20px)未満なら無視するよう変更し、万一それでも短時間に異常な回数繰り返した場合は一時的に処理を止めるループ検出セーフティも追加' },
     { n: 38, date: '2026-10-05', text: '重大バグ修正：タブ復帰直後にサイドバーから別のファイル（話数）を開くと、復帰時に始まった古いファイル用の復元タイマーがキャンセルされずに残り続け、新しいファイルの正しいスクロール位置と何度も取り合いになっていた不具合を実機ログで確認し修正。別ファイルを開く(isDifferentFile)時点で、進行中の古い復元処理を必ずcancelScrollRestore()するよう修正' },
-    { n: 39, date: '2026-10-05', text: '重大バグ修正：長時間バックグラウンド後、保存位置への復元が約2倍の値にジャンプする不具合を実機ログで確認。文字サイズ変更時の比率補正が、比較対象(直前のcs)が一時的な異常値だった場合に誤差をそのまま増幅してしまっていたことが原因。比率補正の振れ幅に上限(1.5倍)を設け、さらにどんな経路でも物理的にスクロール可能な範囲を超えた値は採用しない最終防衛ラインをz()とgetSavedScrollTargetの両方に追加' }
+    { n: 39, date: '2026-10-05', text: '重大バグ修正：長時間バックグラウンド後、保存位置への復元が約2倍の値にジャンプする不具合を実機ログで確認。文字サイズ変更時の比率補正が、比較対象(直前のcs)が一時的な異常値だった場合に誤差をそのまま増幅してしまっていたことが原因。比率補正の振れ幅に上限(1.5倍)を設け、さらにどんな経路でも物理的にスクロール可能な範囲を超えた値は採用しない最終防衛ラインをz()とgetSavedScrollTargetの両方に追加' },
+    { n: 40, date: '2026-10-06', text: '復帰の数秒後にz()が保存値×比率で別の位置へ飛び、その後逆方向にも飛んで往復していた件の対策。復元処理中でない通常のz()は「現在見えている位置」を基準にし、csが変わった分だけ比例させ、csが変わらなければスクロールに触れないよう変更' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -2257,14 +2258,22 @@ function z(){
     
     let curScroll = m ? m.scrollTop : 0;
     let targetScroll = 0;
-    if(typeof getSavedScrollTarget === 'function'){
+    // n40: 復元処理中でない通常のz()（resize等による再計算）は、保存値や古い比率ではなく
+    // 「今実際に見えている位置」を基準にする。csが変わった分だけ現在位置を比例させ、
+    // csが変わらないなら一切触らない（復帰数秒後にz()が別の位置へ飛ぶ不具合の対策）。
+    const anchorMode = !isRestoringAppScroll;
+    if(anchorMode){
+        if(oldCs > 0 && Math.abs(cs - oldCs) > 0.01 && curScroll > 0){
+            targetScroll = Math.round(curScroll * (cs / oldCs));
+        }
+    } else if(typeof getSavedScrollTarget === 'function'){
         targetScroll = getSavedScrollTarget();
     } else if(lastStableUserScrollTop > 0){
         targetScroll = lastStableUserScrollTop;
     } else if(curScroll > 0){
         targetScroll = curScroll;
     }
-    if(oldCs > 0 && cs > 0 && oldCs !== cs && targetScroll > 0){
+    if(!anchorMode && oldCs > 0 && cs > 0 && oldCs !== cs && targetScroll > 0){
         // oldCs（直前のCSS変数の値）自体が、長時間バックグラウンド後の過渡的な
         // レイアウト再構築中などで一時的な異常値になっているケースがあり、その場合
         // この比率補正がそのまま誤差を増幅してしまっていた（実機ログで2倍ジャンプを確認）。
@@ -2278,7 +2287,7 @@ function z(){
     // 最終防衛ライン：どんな計算経路を通っても、物理的にスクロールできる範囲を
     // 超えた値は明らかに異常なので採用しない（この時点でscrollHeightが未確定でも、
     // 少なくとも「現時点であり得ない大きさ」は弾ける）
-    if(m && targetScroll > 0){
+    if(m && targetScroll > 0 && !anchorMode){
         const maxScroll = Math.max(0, m.scrollHeight - m.clientHeight);
         if(maxScroll > 0 && targetScroll > maxScroll) targetScroll = maxScroll;
     }
@@ -2316,6 +2325,7 @@ function z(){
                 m.scrollTop = targetScroll;
             }
         });
+        if(anchorMode && typeof updateStableScrollPosition === 'function') updateStableScrollPosition(targetScroll);
     }
 }
 function getEditorPureTextFromElement(el){
