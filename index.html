@@ -530,7 +530,8 @@ const APP_REVISIONS = [
     { n: 33, date: '2026-10-05', text: 'n32と同じ競合が起動時（アプリを開いた直後）にも発生していたのを実機ログで確認し修正。o(f)内部のz()呼び出し・起動処理内の明示的なz()呼び出し・o()自身の同一ファイル再読込時の独自ジャンプの3つが互いに異なる値で競合していたため、restoreAppScroll()に処理が一本化されるまでisRestoringAppScrollフラグで足並みを揃えるよう統一' },
     { n: 34, date: '2026-10-05', text: 'iPadでアプリスイッチャーから復帰した際、window resize / visualViewport resize のイベントでもscheduleZ()とrestoreAppScroll()が同時発火して競合する経路が残っていたのを実機ログで確認し修正。RO復帰経路と同様、restoreAppScroll()を呼ぶ直前に先にフラグを立てるよう統一' },
     { n: 35, date: '2026-10-05', text: '実機ログで、タブ復帰の数秒後にz()が無関係に独自ジャンプするケースを確認。iPad Safariのツールバーアニメーション等でresizeイベントが遅延発火し、その時点では復帰処理中フラグが既に戻っていたことが原因。resizeリスナー側は「編集中は復元処理を呼ばない」方針なのにz()だけ編集中かどうかを見ていなかった非対称性を解消し、復帰直後かつ編集中の場合はz()のジャンプも休止するよう統一' },
-    { n: 36, date: '2026-10-05', text: '離れていた時間が短い(3秒程度)と問題ないが長い(10秒程度)とズレるとの報告を受け対応。バックグラウンド時間が長いほどiOS Safari側のレイアウト安定に時間がかかることがあり、固定1500msで監視を打ち切る方式では間に合わないケースがあったため、実際にレイアウト変化が検知される限り監視・復帰中フラグを延長し続けるスライディングウィンドウ方式に変更（最長6秒の安全弁付き）' }
+    { n: 36, date: '2026-10-05', text: '離れていた時間が短い(3秒程度)と問題ないが長い(10秒程度)とズレるとの報告を受け対応。バックグラウンド時間が長いほどiOS Safari側のレイアウト安定に時間がかかることがあり、固定1500msで監視を打ち切る方式では間に合わないケースがあったため、実際にレイアウト変化が検知される限り監視・復帰中フラグを延長し続けるスライディングウィンドウ方式に変更（最長6秒の安全弁付き）' },
+    { n: 37, date: '2026-10-05', text: '重大バグ修正：実機ログで、復帰後しばらく経ってもz()が特定の数値間(例：4999⇔3749)を何度も往復し続けるフィードバックループを確認。スクロールバーの出現等による数px単位の幅の揺れでz()の再計算→幅変化→再計算…が無限に連鎖していたとみられる。幅の変化をしきい値(20px)未満なら無視するよう変更し、万一それでも短時間に異常な回数繰り返した場合は一時的に処理を止めるループ検出セーフティも追加' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -7851,6 +7852,17 @@ document.addEventListener('resume', handleAppForeground);
 
 let zScheduled = false;
 let lastZKey = '';
+let lastZWidth = null;
+let zRunTimestamps = [];
+// スクロールバーの出現・消失など、実際には意味のない数px単位の幅の揺れによって
+// z()が再計算→幅が変わる→また再計算…という無限フィードバックループに陥るケースが
+// 実機で確認されたため、「意味のある変化(しきい値以上)かどうか」で判定するようにし、
+// さらに短時間に異常な回数繰り返した場合は一旦止めるセーフティも設ける。
+const Z_WIDTH_THRESHOLD = 20;   // これ未満の幅変化は無視する(スクロールバー幅想定)
+const Z_LOOP_LIMIT = 5;         // この時間内にこの回数を超えて繰り返したらループとみなす
+const Z_LOOP_WINDOW = 3000;
+const Z_LOOP_COOLDOWN = 4000;
+let zLoopBlockedUntil = 0;
 // z() をフレーム単位にまとめ、幅・列数が実際に変わった時だけ実行する（ResizeObserver ↔ z() の連鎖再計算によるチラつき防止）
 function scheduleZ(){
     if(zScheduled) return;
@@ -7863,11 +7875,27 @@ function scheduleZ(){
     const run = () => {
         zScheduled = false;
         try {
+            const now = Date.now();
+            if(now < zLoopBlockedUntil) return; // ループ検出によるクールダウン中
             const m = document.querySelector('.m');
             if(m && (m.clientWidth < 50 || m.clientHeight < 50)) return;
-            const key = (m ? m.clientWidth : 0) + '|' + getActiveCols(f);
-            if(key === lastZKey) return;
-            lastZKey = key;
+            const width = m ? m.clientWidth : 0;
+            const cols = getActiveCols(f);
+            const colsChanged = (lastZKey === '') || (cols !== Number(lastZKey.split('|')[1]));
+            const widthChanged = (lastZWidth === null) || (Math.abs(width - lastZWidth) >= Z_WIDTH_THRESHOLD);
+            if(!colsChanged && !widthChanged) return;
+            lastZKey = width + '|' + cols;
+            lastZWidth = width;
+
+            // 短時間に繰り返しすぎていたら、幅の往復(フィードバックループ)とみなして一旦止める
+            zRunTimestamps.push(now);
+            zRunTimestamps = zRunTimestamps.filter(t => now - t < Z_LOOP_WINDOW);
+            if(zRunTimestamps.length > Z_LOOP_LIMIT){
+                if(typeof logRestoreScrollCall === 'function') logRestoreScrollCall('z()-loop-detected-cooldown', 'runs='+zRunTimestamps.length+' width='+width);
+                zLoopBlockedUntil = now + Z_LOOP_COOLDOWN;
+                zRunTimestamps = [];
+                return;
+            }
             z();
         } catch(err){
             console.error('z() error:', err);
