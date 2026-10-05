@@ -532,7 +532,8 @@ const APP_REVISIONS = [
     { n: 35, date: '2026-10-05', text: '実機ログで、タブ復帰の数秒後にz()が無関係に独自ジャンプするケースを確認。iPad Safariのツールバーアニメーション等でresizeイベントが遅延発火し、その時点では復帰処理中フラグが既に戻っていたことが原因。resizeリスナー側は「編集中は復元処理を呼ばない」方針なのにz()だけ編集中かどうかを見ていなかった非対称性を解消し、復帰直後かつ編集中の場合はz()のジャンプも休止するよう統一' },
     { n: 36, date: '2026-10-05', text: '離れていた時間が短い(3秒程度)と問題ないが長い(10秒程度)とズレるとの報告を受け対応。バックグラウンド時間が長いほどiOS Safari側のレイアウト安定に時間がかかることがあり、固定1500msで監視を打ち切る方式では間に合わないケースがあったため、実際にレイアウト変化が検知される限り監視・復帰中フラグを延長し続けるスライディングウィンドウ方式に変更（最長6秒の安全弁付き）' },
     { n: 37, date: '2026-10-05', text: '重大バグ修正：実機ログで、復帰後しばらく経ってもz()が特定の数値間(例：4999⇔3749)を何度も往復し続けるフィードバックループを確認。スクロールバーの出現等による数px単位の幅の揺れでz()の再計算→幅変化→再計算…が無限に連鎖していたとみられる。幅の変化をしきい値(20px)未満なら無視するよう変更し、万一それでも短時間に異常な回数繰り返した場合は一時的に処理を止めるループ検出セーフティも追加' },
-    { n: 38, date: '2026-10-05', text: '重大バグ修正：タブ復帰直後にサイドバーから別のファイル（話数）を開くと、復帰時に始まった古いファイル用の復元タイマーがキャンセルされずに残り続け、新しいファイルの正しいスクロール位置と何度も取り合いになっていた不具合を実機ログで確認し修正。別ファイルを開く(isDifferentFile)時点で、進行中の古い復元処理を必ずcancelScrollRestore()するよう修正' }
+    { n: 38, date: '2026-10-05', text: '重大バグ修正：タブ復帰直後にサイドバーから別のファイル（話数）を開くと、復帰時に始まった古いファイル用の復元タイマーがキャンセルされずに残り続け、新しいファイルの正しいスクロール位置と何度も取り合いになっていた不具合を実機ログで確認し修正。別ファイルを開く(isDifferentFile)時点で、進行中の古い復元処理を必ずcancelScrollRestore()するよう修正' },
+    { n: 39, date: '2026-10-05', text: '重大バグ修正：長時間バックグラウンド後、保存位置への復元が約2倍の値にジャンプする不具合を実機ログで確認。文字サイズ変更時の比率補正が、比較対象(直前のcs)が一時的な異常値だった場合に誤差をそのまま増幅してしまっていたことが原因。比率補正の振れ幅に上限(1.5倍)を設け、さらにどんな経路でも物理的にスクロール可能な範囲を超えた値は採用しない最終防衛ラインをz()とgetSavedScrollTargetの両方に追加' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -2264,8 +2265,22 @@ function z(){
         targetScroll = curScroll;
     }
     if(oldCs > 0 && cs > 0 && oldCs !== cs && targetScroll > 0){
-        targetScroll = Math.round(targetScroll * (cs / oldCs));
+        // oldCs（直前のCSS変数の値）自体が、長時間バックグラウンド後の過渡的な
+        // レイアウト再構築中などで一時的な異常値になっているケースがあり、その場合
+        // この比率補正がそのまま誤差を増幅してしまっていた（実機ログで2倍ジャンプを確認）。
+        // 正当な列数・文字サイズ変更でここまで極端な比率にはならないため、上限を設ける。
+        let ratio = cs / oldCs;
+        if(ratio > 1.5) ratio = 1.5;
+        if(ratio < (1/1.5)) ratio = 1/1.5;
+        targetScroll = Math.round(targetScroll * ratio);
         lastStableUserScrollTop = targetScroll;
+    }
+    // 最終防衛ライン：どんな計算経路を通っても、物理的にスクロールできる範囲を
+    // 超えた値は明らかに異常なので採用しない（この時点でscrollHeightが未確定でも、
+    // 少なくとも「現時点であり得ない大きさ」は弾ける）
+    if(m && targetScroll > 0){
+        const maxScroll = Math.max(0, m.scrollHeight - m.clientHeight);
+        if(maxScroll > 0 && targetScroll > maxScroll) targetScroll = maxScroll;
     }
     
     document.documentElement.style.setProperty('--cs',cs+'px');
@@ -7557,14 +7572,29 @@ function getSavedScrollTarget(){
         } catch(err){}
     }
 
+    // csAt（保存時点のcs）自体が一時的な異常値を拾っていた場合に備え、
+    // 比率補正そのものの振れ幅を抑える安全装置（n39・z()側と同じ考え方）
+    const clampRatio = (r) => {
+        if(r > 1.5) return 1.5;
+        if(r < (1/1.5)) return 1/1.5;
+        return r;
+    };
+    let result;
     if(lineIdx > 0 && cs > 0){
-        let ratio = (csAt > 0) ? (cs / csAt) : 1;
-        return (lineIdx * cs) + Math.round((lineOff || 0) * ratio);
+        let ratio = (csAt > 0) ? clampRatio(cs / csAt) : 1;
+        result = (lineIdx * cs) + Math.round((lineOff || 0) * ratio);
+    } else if(csAt > 0 && cs > 0 && Math.abs(cs - csAt) > 0.5 && target > 0){
+        result = Math.round(target * clampRatio(cs / csAt));
+    } else {
+        result = target;
     }
-    if(csAt > 0 && cs > 0 && Math.abs(cs - csAt) > 0.5 && target > 0){
-        return Math.round(target * (cs / csAt));
+    // 最終防衛ライン：物理的にスクロールできる範囲を超えた値は採用しない
+    const mEl = document.querySelector('.m');
+    if(mEl && result > 0){
+        const maxScroll = Math.max(0, mEl.scrollHeight - mEl.clientHeight);
+        if(maxScroll > 0 && result > maxScroll) result = maxScroll;
     }
-    return target;
+    return result;
 }
 
 function markUserInteractionStart(){
