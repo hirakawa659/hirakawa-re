@@ -527,7 +527,8 @@ const APP_REVISIONS = [
     { n: 30, date: '2026-09-30', text: 'n29のResizeObserverを80msデバウンス化。キーボード開閉アニメーション等でresizeが連続発火する最中に毎回補正をかけて画面がガタつくのを防止（変化が収まってから1回だけ再補正する）' },
     { n: 31, date: '2026-09-30', text: 'iPad等でPCの開発者ツールが使えなくても確認できるよう、ツールバーに「復元ログ」ボタンを追加。__restoreScrollLog / __scrollGuardLog の中身を画面に表示・コピーできる表示専用機能（スクロール処理のロジック自体には変更なし）' },
     { n: 32, date: '2026-10-05', text: '重大バグ修正：タブ復帰時、z()（列幅再計算）とrestoreAppScroll()が同時に別々のタイミングでそれぞれ別の目標値を計算し、互いに異なる位置へ二重にジャンプして競合していた（実機ログで確認）。復帰処理中はz()側の独自ジャンプを休止し、restoreAppScrollの一本化された処理に委ねるよう修正。フラグが戻らず固着しないよう早期return経路も保護' },
-    { n: 33, date: '2026-10-05', text: 'n32と同じ競合が起動時（アプリを開いた直後）にも発生していたのを実機ログで確認し修正。o(f)内部のz()呼び出し・起動処理内の明示的なz()呼び出し・o()自身の同一ファイル再読込時の独自ジャンプの3つが互いに異なる値で競合していたため、restoreAppScroll()に処理が一本化されるまでisRestoringAppScrollフラグで足並みを揃えるよう統一' }
+    { n: 33, date: '2026-10-05', text: 'n32と同じ競合が起動時（アプリを開いた直後）にも発生していたのを実機ログで確認し修正。o(f)内部のz()呼び出し・起動処理内の明示的なz()呼び出し・o()自身の同一ファイル再読込時の独自ジャンプの3つが互いに異なる値で競合していたため、restoreAppScroll()に処理が一本化されるまでisRestoringAppScrollフラグで足並みを揃えるよう統一' },
+    { n: 34, date: '2026-10-05', text: 'iPadでアプリスイッチャーから復帰した際、window resize / visualViewport resize のイベントでもscheduleZ()とrestoreAppScroll()が同時発火して競合する経路が残っていたのを実機ログで確認し修正。RO復帰経路と同様、restoreAppScroll()を呼ぶ直前に先にフラグを立てるよう統一' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -7849,10 +7850,14 @@ function isEditorFocused(){
 }
 
 window.addEventListener('resize',()=>{
+    // 入力中(キーボード表示中)はブラウザのカーソル追従スクロールを優先し、位置を奪い返さない
+    const willRestore = (document.visibilityState === 'visible' && !isUserTouchingOrWheeling && !isEditorFocused() && lastStableUserScrollTop > 0);
+    // この後すぐ下でrestoreAppScroll()も呼ぶ場合、scheduleZ()経由で走るz()が
+    // 独自ジャンプで競合しないよう、先に同期的にフラグを立てておく
+    if(willRestore) isRestoringAppScroll = true;
     scheduleZ();
     window.scrollTo(0,0);
-    // 入力中(キーボード表示中)はブラウザのカーソル追従スクロールを優先し、位置を奪い返さない
-    if(document.visibilityState === 'visible' && !isUserTouchingOrWheeling && !isEditorFocused() && lastStableUserScrollTop > 0){
+    if(willRestore){
         restoreAppScroll();
     }
 });
@@ -7860,6 +7865,7 @@ window.addEventListener('resize',()=>{
 if(window.visualViewport){
     window.visualViewport.addEventListener('resize', () => {
         if(document.visibilityState === 'visible' && !isUserTouchingOrWheeling && !isEditorFocused() && lastStableUserScrollTop > 0){
+            isRestoringAppScroll = true;
             restoreAppScroll();
         }
     });
