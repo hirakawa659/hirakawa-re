@@ -534,7 +534,7 @@ const APP_REVISIONS = [
     { n: 37, date: '2026-10-05', text: '重大バグ修正：実機ログで、復帰後しばらく経ってもz()が特定の数値間(例：4999⇔3749)を何度も往復し続けるフィードバックループを確認。スクロールバーの出現等による数px単位の幅の揺れでz()の再計算→幅変化→再計算…が無限に連鎖していたとみられる。幅の変化をしきい値(20px)未満なら無視するよう変更し、万一それでも短時間に異常な回数繰り返した場合は一時的に処理を止めるループ検出セーフティも追加' },
     { n: 38, date: '2026-10-05', text: '重大バグ修正：タブ復帰直後にサイドバーから別のファイル（話数）を開くと、復帰時に始まった古いファイル用の復元タイマーがキャンセルされずに残り続け、新しいファイルの正しいスクロール位置と何度も取り合いになっていた不具合を実機ログで確認し修正。別ファイルを開く(isDifferentFile)時点で、進行中の古い復元処理を必ずcancelScrollRestore()するよう修正' },
     { n: 39, date: '2026-10-05', text: '重大バグ修正：長時間バックグラウンド後、保存位置への復元が約2倍の値にジャンプする不具合を実機ログで確認。文字サイズ変更時の比率補正が、比較対象(直前のcs)が一時的な異常値だった場合に誤差をそのまま増幅してしまっていたことが原因。比率補正の振れ幅に上限(1.5倍)を設け、さらにどんな経路でも物理的にスクロール可能な範囲を超えた値は採用しない最終防衛ラインをz()とgetSavedScrollTargetの両方に追加' },
-    { n: 40, date: '2026-10-06', text: 'アプリスイッチャー等の一時的なresizeでcsが往復し(例:×1.33→×0.71)、z()が現在位置を比例変換→ブラウザがクランプ→その壊れた位置が「保存位置」として記録され、復帰しても元に戻らなかった件の対策。保存位置は行数(cs非依存)で保持してz()はそれ×新csで決める／cs変更直後の自動scrollイベントと、その直後のバックグラウンド保存は記録しない／上限クランプは新レイアウト確定後に行う' }
+    { n: 40, date: '2026-10-06', text: 'アプリスイッチャー等の一時的なresizeでcsが往復し(例:×1.33→×0.71)、z()が現在位置を比例変換→ブラウザがクランプ→その壊れた位置が「保存位置」として記録され、復帰しても元に戻らなかった件の対策。保存位置は行数(cs非依存)で保持してz()はそれ×新csで決める／cs変更直後の自動scrollイベントと、その直後のバックグラウンド保存は記録しない／上限クランプは新レイアウト確定後に行う／復元の再試行(60/180/400ms等のタイマーとResizeObserver)が、開始時に固定した目標値(一時的なcs基準)で、z()が直した正しい位置を上書きしていたため、毎回その時点のcsで目標を再計算するよう変更' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -7800,9 +7800,14 @@ function restoreAppScroll(force = false){
     const applyScroll = () => {
         if(myToken !== restoreScrollToken) return;   // 古いシーケンスは何もしない
         if(isUserTouchingOrWheeling) return;
-        if(Math.abs(mCont.scrollTop - target) > 1){
-            logRestoreScrollCall('jump', 'from='+mCont.scrollTop+' to='+target);
-            mCont.scrollTop = target;
+        // 重要：目標は「今のcs」で毎回計算し直す。復元の開始時に固定した値を使い回すと、
+        // 途中でz()がcsを切り替えた(一時的なresize→元に戻る)ときに、古いcs基準の値で
+        // 正しい位置を上書きしてしまう（60ms後のタイマーが 2453→1635 に戻していたのがこれ）
+        const tgt = getSavedScrollTarget();
+        if(!(tgt > 0)) return;
+        if(Math.abs(mCont.scrollTop - tgt) > 1){
+            logRestoreScrollCall('jump', 'from='+mCont.scrollTop+' to='+tgt);
+            mCont.scrollTop = tgt;
         }
     };
 
