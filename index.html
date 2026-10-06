@@ -247,6 +247,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
 <button id="tool_sync" class="tool-item" onclick="openSyncModal()" style="background:transparent;border:none;color:#2563eb;font-weight:bold;font-size:11px;line-height:1.15;padding:2px 4px;text-align:center" title="クラウド同期とアカウント"><span id="toolSyncStatusIcon">☁️</span><br><span id="toolSyncStatusText">未ログイン</span></button>
 <button id="tool_revision" type="button" onclick="openRevisionModal()" title="修正履歴（コードが変わるたびに番号が増えます）" style="margin-left:auto;background:transparent;border:none;color:#be123c;font-weight:bold;font-size:11px;line-height:1.15;padding:2px 6px;text-align:center;white-space:nowrap;flex-shrink:0;cursor:pointer">修正<br><span id="toolRevisionNum">#0</span></button>
 <span id="cssVarDiagLabel" style="font-size:9px;line-height:1.2;color:#0f766e;font-family:monospace;white-space:pre;padding:2px 4px;flex-shrink:0" title="--cs/--cols の変化（確定・入力のたびに更新）">cs:-- </span>
+<button id="tool_restore_log" type="button" class="tool-item" onclick="openScrollDebugLogModal()" style="background:transparent;border:none;color:#0f766e;font-weight:bold;font-size:11px;line-height:1.15;padding:2px 4px;text-align:center;flex-shrink:0;white-space:nowrap" title="スクロール復元ログ（デバッグ用）">復元<br>ログ</button>
 <select id="l" onchange="updateColsDisplay();z()" style="display:none"></select>
 </div>
 <div id="repBar" style="display:none;position:fixed;top:50px;left:0;right:0;background:#fffbeb;border-bottom:1px solid #fde68a;padding:8px 12px;gap:8px;align-items:center;z-index:998;box-sizing:border-box">
@@ -397,10 +398,6 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
     <button type="button" id="linenumCopyBtn" class="linenum-tool-item" onclick="c()" style="width:58px;padding:5px 0;font-size:10px;font-weight:bold;line-height:1.15;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:normal;text-align:center;touch-action:none" title="エディタの内部装飾タグを除去し、きれいなプレーンテキスト文章にしてコピー">
       特殊コピー
     </button>
-    <!-- スクロール復元ログ確認（デバッグ用） -->
-    <button type="button" id="linenumScrollLogBtn" class="linenum-tool-item" onclick="openScrollDebugLogModal()" style="width:58px;padding:5px 0;font-size:9.5px;font-weight:bold;line-height:1.15;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:normal;text-align:center;touch-action:none" title="タブ切替・復帰時のスクロール位置ログを確認">
-      復元<br>ログ
-    </button>
     <!-- 検出と変換 ▾ -->
     <div id="detectContainer" class="linenum-tool-item" style="position:relative;width:58px;touch-action:none">
       <button type="button" id="detectBtn" onclick="toggleDetectMenu(event)" style="width:58px;padding:3.5px 1px;font-size:9.5px;font-weight:bold;line-height:1.15;letter-spacing:-0.4px;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:1px;touch-action:none" title="検出と変換メニュー">
@@ -534,7 +531,7 @@ const APP_REVISIONS = [
     { n: 37, date: '2026-10-05', text: '重大バグ修正：実機ログで、復帰後しばらく経ってもz()が特定の数値間(例：4999⇔3749)を何度も往復し続けるフィードバックループを確認。スクロールバーの出現等による数px単位の幅の揺れでz()の再計算→幅変化→再計算…が無限に連鎖していたとみられる。幅の変化をしきい値(20px)未満なら無視するよう変更し、万一それでも短時間に異常な回数繰り返した場合は一時的に処理を止めるループ検出セーフティも追加' },
     { n: 38, date: '2026-10-05', text: '重大バグ修正：タブ復帰直後にサイドバーから別のファイル（話数）を開くと、復帰時に始まった古いファイル用の復元タイマーがキャンセルされずに残り続け、新しいファイルの正しいスクロール位置と何度も取り合いになっていた不具合を実機ログで確認し修正。別ファイルを開く(isDifferentFile)時点で、進行中の古い復元処理を必ずcancelScrollRestore()するよう修正' },
     { n: 39, date: '2026-10-05', text: '重大バグ修正：長時間バックグラウンド後、保存位置への復元が約2倍の値にジャンプする不具合を実機ログで確認。文字サイズ変更時の比率補正が、比較対象(直前のcs)が一時的な異常値だった場合に誤差をそのまま増幅してしまっていたことが原因。比率補正の振れ幅に上限(1.5倍)を設け、さらにどんな経路でも物理的にスクロール可能な範囲を超えた値は採用しない最終防衛ラインをz()とgetSavedScrollTargetの両方に追加' },
-    { n: 40, date: '2026-10-06', text: 'アプリスイッチャー等の一時的なresizeでcsが往復し(例:×1.33→×0.71)、z()が現在位置を比例変換→ブラウザがクランプ→その壊れた位置が「保存位置」として記録され、復帰しても元に戻らなかった件の対策。保存位置は行数(cs非依存)で保持してz()はそれ×新csで決める／cs変更直後の自動scrollイベントと、その直後のバックグラウンド保存は記録しない／上限クランプは新レイアウト確定後に行う／復元の再試行(60/180/400ms等のタイマーとResizeObserver)が、開始時に固定した目標値(一時的なcs基準)で、z()が直した正しい位置を上書きしていたため、毎回その時点のcsで目標を再計算するよう変更' }
+    { n: 40, date: '2026-10-06', text: 'アプリスイッチャー等の一時的なresizeでcsが往復し(例:×1.33→×0.71)、z()が現在位置を比例変換→ブラウザがクランプ→その壊れた位置が「保存位置」として記録され、復帰しても元に戻らなかった件の対策。保存位置は行数(cs非依存)で保持してz()はそれ×新csで決める／cs変更直後の自動scrollイベントと、その直後のバックグラウンド保存は記録しない／上限クランプは新レイアウト確定後に行う／復元の再試行(60/180/400ms等のタイマーとResizeObserver)が、開始時に固定した目標値(一時的なcs基準)で、z()が直した正しい位置を上書きしていたため、毎回その時点のcsで目標を再計算するよう変更／「復元ログ」ボタンを行番号ツール内から、上部ツールバーの cs 表示の右隣へ移動（並べ替え処理で左に流れていたため、cs表示と同様に並べ替え対象外にして右端側へ固定）' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -6296,6 +6293,9 @@ function applyToolOrder(orderList){
     // ピクセル情報表示(cssVarDiagLabel)も並べ替え対象外。常に修正ボタンの一個左に固定
     const diagLabel=document.getElementById('cssVarDiagLabel');
     if(diagLabel && revBtn) header.insertBefore(diagLabel, revBtn);
+    // 復元ログボタンも並べ替え対象外。cs表示の右隣（修正ボタンの一個左）に固定
+    const logBtn=document.getElementById('tool_restore_log');
+    if(logBtn && revBtn) header.insertBefore(logBtn, revBtn);
     localStorage.setItem('n_tool_order_v8',JSON.stringify(orderList));
     applyCustomToolLabels();
 }
