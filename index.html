@@ -534,7 +534,7 @@ const APP_REVISIONS = [
     { n: 37, date: '2026-10-05', text: '重大バグ修正：実機ログで、復帰後しばらく経ってもz()が特定の数値間(例：4999⇔3749)を何度も往復し続けるフィードバックループを確認。スクロールバーの出現等による数px単位の幅の揺れでz()の再計算→幅変化→再計算…が無限に連鎖していたとみられる。幅の変化をしきい値(20px)未満なら無視するよう変更し、万一それでも短時間に異常な回数繰り返した場合は一時的に処理を止めるループ検出セーフティも追加' },
     { n: 38, date: '2026-10-05', text: '重大バグ修正：タブ復帰直後にサイドバーから別のファイル（話数）を開くと、復帰時に始まった古いファイル用の復元タイマーがキャンセルされずに残り続け、新しいファイルの正しいスクロール位置と何度も取り合いになっていた不具合を実機ログで確認し修正。別ファイルを開く(isDifferentFile)時点で、進行中の古い復元処理を必ずcancelScrollRestore()するよう修正' },
     { n: 39, date: '2026-10-05', text: '重大バグ修正：長時間バックグラウンド後、保存位置への復元が約2倍の値にジャンプする不具合を実機ログで確認。文字サイズ変更時の比率補正が、比較対象(直前のcs)が一時的な異常値だった場合に誤差をそのまま増幅してしまっていたことが原因。比率補正の振れ幅に上限(1.5倍)を設け、さらにどんな経路でも物理的にスクロール可能な範囲を超えた値は採用しない最終防衛ラインをz()とgetSavedScrollTargetの両方に追加' },
-    { n: 40, date: '2026-10-06', text: '復帰の数秒後にz()が保存値×比率で別の位置へ飛び、その後逆方向にも飛んで往復していた件の対策。復元処理中でない通常のz()は「現在見えている位置」を基準にし、csが変わった分だけ比例させ、csが変わらなければスクロールに触れないよう変更' }
+    { n: 40, date: '2026-10-06', text: 'アプリスイッチャー等の一時的なresizeでcsが往復し(例:×1.33→×0.71)、z()が現在位置を比例変換→ブラウザがクランプ→その壊れた位置が「保存位置」として記録され、復帰しても元に戻らなかった件の対策。保存位置は行数(cs非依存)で保持してz()はそれ×新csで決める／cs変更直後の自動scrollイベントと、その直後のバックグラウンド保存は記録しない／上限クランプは新レイアウト確定後に行う' }
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -769,7 +769,7 @@ window.__novelBridge = {
     getData(){ return d; },
     getFileId(){ return f; }
 };
-let lastStableUserScrollTop=0, lastStableLineIndex=0, lastStableLineOffset=0, lastCsAtScroll=32, lastBlurTime=0, lastResumeTime=0, isRestoringAppScroll=false, userIsActivelyInteracting=false, isUserTouchingOrWheeling=false, userTouchEndTime=0, touchScrollTimeout=null;
+let lastStableUserScrollTop=0, lastStableLineIndex=0, lastStableLineOffset=0, lastCsAtScroll=32, lastBlurTime=0, lastResumeTime=0, isRestoringAppScroll=false, userIsActivelyInteracting=false, isUserTouchingOrWheeling=false, userTouchEndTime=0, touchScrollTimeout=null, zShiftIgnoreUntil=0, lastCsShiftAt=0;
 let currentViewMode='editor';
 let currentShelfFolderId=null;
 let adminParenthesisConvertMode = false;
@@ -2263,8 +2263,16 @@ function z(){
     // csが変わらないなら一切触らない（復帰数秒後にz()が別の位置へ飛ぶ不具合の対策）。
     const anchorMode = !isRestoringAppScroll;
     if(anchorMode){
-        if(oldCs > 0 && Math.abs(cs - oldCs) > 0.01 && curScroll > 0){
-            targetScroll = Math.round(curScroll * (cs / oldCs));
+        if(oldCs > 0 && Math.abs(cs - oldCs) > 0.01){
+            // 一時的なresize(アプリスイッチャー等)で壊れた現在位置ではなく、
+            // ユーザーが実際にスクロールした位置を「行数(cs非依存)」で持っておき、それ×新csで決める
+            let rows = 0;
+            if(lastStableUserScrollTop > 0 && lastCsAtScroll > 0){
+                rows = lastStableLineIndex + (lastStableLineOffset / lastCsAtScroll);
+            } else if(curScroll > 0){
+                rows = curScroll / oldCs;
+            }
+            if(rows > 0) targetScroll = Math.round(rows * cs);
         }
     } else if(typeof getSavedScrollTarget === 'function'){
         targetScroll = getSavedScrollTarget();
@@ -2287,12 +2295,12 @@ function z(){
     // 最終防衛ライン：どんな計算経路を通っても、物理的にスクロールできる範囲を
     // 超えた値は明らかに異常なので採用しない（この時点でscrollHeightが未確定でも、
     // 少なくとも「現時点であり得ない大きさ」は弾ける）
-    if(m && targetScroll > 0 && !anchorMode){
-        const maxScroll = Math.max(0, m.scrollHeight - m.clientHeight);
-        if(maxScroll > 0 && targetScroll > maxScroll) targetScroll = maxScroll;
-    }
-    
     document.documentElement.style.setProperty('--cs',cs+'px');
+    if(Math.abs(cs - oldCs) > 0.01){
+        // csが変わった直後のscrollイベント(ブラウザの自動クランプ等)は「ユーザー操作」ではないので記録させない
+        zShiftIgnoreUntil = Date.now() + 1000;
+        lastCsShiftAt = Date.now();
+    }
     document.documentElement.style.setProperty('--cols', String(num));
     // 行が「ちょうど満杯」だと、ブラウザは最後の文字の直後のカーソルを次の行の先頭に表示する。
     // 入力欄だけ 0.3マス分広げておけば(次の1文字は入らない幅)、満杯の行の末尾にカーソルが留まる。
@@ -2312,6 +2320,11 @@ function z(){
     // 戻っているケースがあった。window resizeリスナー側は「編集中(カーソルが入力欄にある)
     // 間は復元処理を呼ばない」という方針なのに、z()だけは編集中かどうかを見ずに無条件で
     // ジャンプしてしまう非対称性があったため、ここでも同じ方針に揃える。
+    // 最終防衛ライン：新しいcsでのレイアウト確定後の「本当に届く範囲」で頭打ちにする
+    if(m && targetScroll > 0){
+        const maxNow = Math.max(0, m.scrollHeight - m.clientHeight);
+        if(maxNow > 0 && targetScroll > maxNow) targetScroll = maxNow;
+    }
     const recentlyResumed = (typeof lastResumeTime !== 'undefined') && (Date.now() - lastResumeTime < 2000);
     const editingNow = (typeof isEditorFocused === 'function') && isEditorFocused();
     if(m && targetScroll > 0 && !isRestoringAppScroll && !(recentlyResumed && editingNow)){
@@ -2325,7 +2338,6 @@ function z(){
                 m.scrollTop = targetScroll;
             }
         });
-        if(anchorMode && typeof updateStableScrollPosition === 'function') updateStableScrollPosition(targetScroll);
     }
 }
 function getEditorPureTextFromElement(el){
@@ -7639,6 +7651,7 @@ function initScrollTracker(){
     mCont.addEventListener('scroll', () => {
         if(isRestoringAppScroll) return;
         if(document.hidden) return;
+        if(Date.now() < zShiftIgnoreUntil) return;  // z()によるcs変更直後の自動スクロールは保存しない
         if(mCont.clientWidth < 50 || mCont.clientHeight < 50) return;  // 非表示(幅0/高さ0)で scrollTop が 0 に丸められた値は記録しない
         
         let now = Date.now();
@@ -7861,7 +7874,7 @@ function handleAppBackground(){
     lastBlurTime = Date.now();
     const mCont = document.querySelector('.m');
     const mVisible = !!(mCont && mCont.clientWidth >= 50 && mCont.clientHeight >= 50);
-    if(mCont && mVisible && mCont.scrollTop >= 0){
+    if(mCont && mVisible && mCont.scrollTop >= 0 && (Date.now() - lastCsShiftAt > 5000)){
         if(lastStableUserScrollTop <= 0 || Math.abs(mCont.scrollTop - lastStableUserScrollTop) < 300 || mCont.scrollTop > 0){
             updateStableScrollPosition(mCont.scrollTop);
         }
@@ -7956,6 +7969,7 @@ function isEditorFocused(){
 }
 
 window.addEventListener('resize',()=>{
+    if(!isEditorFocused()) zShiftIgnoreUntil = Math.max(zShiftIgnoreUntil, Date.now() + 600);
     // 入力中(キーボード表示中)はブラウザのカーソル追従スクロールを優先し、位置を奪い返さない
     const willRestore = (document.visibilityState === 'visible' && !isUserTouchingOrWheeling && !isEditorFocused() && lastStableUserScrollTop > 0);
     // この後すぐ下でrestoreAppScroll()も呼ぶ場合、scheduleZ()経由で走るz()が
