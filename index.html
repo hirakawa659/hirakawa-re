@@ -311,7 +311,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
       <button id="shelfFolderSettingsBtn" type="button" onclick="onShelfFolderSettingsClick(event)" style="font-size:11px;padding:2px 4px;line-height:1.2;cursor:pointer;font-weight:600;background:transparent;color:#000000;border:none;box-shadow:none;outline:none" title="フォルダの設定・名前変更・削除">フォルダの設定</button>
     </div>
   </div>
-  <div style="padding:14px 20px 80px 20px;display:flex;flex-direction:column;gap:18px">
+  <div style="flex:1 0 auto;padding:14px 20px 80px 20px;display:flex;flex-direction:column;gap:18px;align-content:flex-start">
     <div id="shelfActionHeader" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding-bottom:2px;width:100%;box-sizing:border-box">
       <button id="shelfFolderColorBtn" type="button" onclick="onShelfFolderColorClick(event)" style="font-size:11.5px;padding:2px 4px;line-height:1.2;cursor:pointer;background:transparent;color:#000000;border:none;box-shadow:none;outline:none;font-weight:600;white-space:nowrap;flex-shrink:0" title="フォルダ領域の色を設定（デフォルト／個別）">フォルダ領域</button>
       <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
@@ -356,7 +356,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
 #mergeBox .ms-btn:disabled{opacity:.5;cursor:default}
 #mergeBox .ms-run{background:#2563eb;color:#fff;border-color:#1d4ed8}
 </style>
-<button type="button" id="mergeToggleBtn" onclick="mergeBoxToggle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 5px;font-size:15px;background:var(--sidebar-bg);border:none;border-radius:0;color:var(--sidebar-text);cursor:pointer;font-weight:bold">ノート合成 <span id="mergeToggleArrow">▸</span></button>
+<button type="button" id="mergeToggleBtn" onclick="mergeBoxToggle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:20px 5px;font-size:22px;background:var(--sidebar-bg);border:none;border-radius:0;color:var(--sidebar-text);cursor:pointer;font-weight:bold">ノート合成 <span id="mergeToggleArrow" style="font-size:16px">▸</span></button>
 <div id="mergePanel" style="display:none;padding:4px 20px 14px 20px;max-height:50vh;overflow-y:auto">
 <div id="mergeGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;max-width:760px"></div>
 <div style="display:flex;gap:8px;margin-top:10px;max-width:760px">
