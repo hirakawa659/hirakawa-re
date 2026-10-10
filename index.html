@@ -191,7 +191,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
 .modal-body{padding:14px;overflow-y:auto;max-height:80vh;display:flex;flex-direction:column;gap:12px;box-sizing:border-box}
 .modal-section{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
 .modal-sec-title{font-size:11px;font-weight:bold;color:#64748b;text-transform:uppercase;letter-spacing:0.5px}
-.shelf-view-container{display:none;flex:1;flex-direction:column;height:100%;background:var(--shelf-bg,#fafbfc);color:var(--shelf-title-color,#1e293b);overflow-y:auto;-webkit-overflow-scrolling:touch}
+.shelf-view-container{--shelf-max-cols:10;display:none;flex:1;flex-direction:column;height:100%;background:var(--shelf-bg,#fafbfc);color:var(--shelf-title-color,#1e293b);overflow-y:auto;-webkit-overflow-scrolling:touch}
 .shelf-folder-card{display:flex;flex-direction:column;align-items:center;text-align:center;cursor:pointer;padding:10px 6px;border-radius:10px;transition:transform 0.12s ease,background 0.12s ease;user-select:none;touch-action:manipulation;position:relative}
 .shelf-folder-card:hover{background:rgba(0,0,0,0.04);transform:translateY(-2px)}
 .shelf-folder-card:active{transform:scale(0.96)}
@@ -285,27 +285,6 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
 </div>
 </div>
 <div id="t"></div>
-<!-- ノート合成ボックス（追加機能：既存要素には触れず、#t と #sidebarActionBar の間に挿入） -->
-<div id="mergeBox" style="border-top:1px solid var(--sidebar-border);background:var(--sidebar-bg);flex-shrink:0">
-<style>
-#mergeBox .ms-slot{position:relative;aspect-ratio:1/1;min-height:24px;box-sizing:border-box;border:1px dashed var(--sidebar-border);border-radius:3px;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:10px;line-height:1;color:#94a3b8;cursor:default;user-select:none;-webkit-user-select:none;touch-action:manipulation}
-#mergeBox .ms-slot.ms-filled{background:var(--sidebar-active-bg);border-style:solid;color:var(--sidebar-text);font-weight:bold;cursor:pointer}
-#mergeBox .ms-slot.ms-over{outline:2px solid #2563eb;outline-offset:-2px;background:#bfdbfe}
-#mergeBox .ms-slot .ms-n{position:absolute;top:1px;left:2px;font-size:7px;opacity:.6;font-weight:normal}
-#mergeBox .ms-btn{flex:1;font-size:11px;padding:4px 2px;border:1px solid var(--sidebar-border);border-radius:4px;background:var(--sidebar-bg);color:var(--sidebar-text);font-weight:bold;cursor:pointer}
-#mergeBox .ms-btn:disabled{opacity:.5;cursor:default}
-#mergeBox .ms-run{background:#2563eb;color:#fff;border-color:#1d4ed8}
-</style>
-<button type="button" id="mergeToggleBtn" onclick="mergeBoxToggle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:4px;padding:5px;font-size:11px;background:var(--sidebar-bg);border:none;color:var(--sidebar-text);cursor:pointer;font-weight:bold">ノート合成 <span id="mergeToggleArrow">▸</span></button>
-<div id="mergePanel" style="display:none;padding:2px 6px 6px 6px">
-<div id="mergeGrid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px"></div>
-<div style="display:flex;gap:4px;margin-top:5px">
-<button type="button" class="ms-btn" onclick="mergeBoxClear()">クリア</button>
-<button type="button" id="mergeRunBtn" class="ms-btn ms-run" onclick="mergeBoxRun()">決定</button>
-</div>
-<div id="mergeMsg" style="font-size:10px;line-height:1.35;margin-top:4px;color:var(--sidebar-text);opacity:.8;min-height:13px;word-break:break-all"></div>
-</div>
-</div>
 <div id="sidebarActionBar" style="border-top:1px solid var(--sidebar-border);background:var(--sidebar-bg);padding:3px 6px;display:flex;align-items:center;justify-content:flex-end;flex-shrink:0">
   <button type="button" id="sidebarColorBtn" onclick="openSidebarColorModal(event)" style="background:var(--sidebar-bg);border:none;color:var(--sidebar-text);padding:4px 8px;border-radius:4px;font-size:11px;font-weight:bold;cursor:pointer;display:inline-flex;align-items:center;gap:4px;transition:all 0.1s ease" onmouseover="this.style.background='var(--sidebar-active-bg)'" onmouseout="this.style.background='var(--sidebar-bg)'" title="サイドバーの色設定を開く">
     <span>色設定</span>
@@ -347,7 +326,7 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
           フォルダ
         </span>
       </div>
-      <div id="shelfFoldersGrid" style="display:grid;grid-template-columns:repeat(auto-fill, 120px);justify-content:start;gap:14px;align-items:start"></div>
+      <div id="shelfFoldersGrid" style="display:grid;grid-template-columns:repeat(auto-fill, 120px);justify-content:start;max-width:calc(var(--shelf-max-cols,10)*120px + (var(--shelf-max-cols,10) - 1)*14px);gap:14px;align-items:start"></div>
     </div>
     <div id="shelfNotesSec" style="display:none">
       <div style="font-size:12.5px;font-weight:bold;color:#334155;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between">
@@ -359,13 +338,34 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
           <span id="shelfNotesCount" style="font-size:11px;font-weight:normal;color:#94a3b8"></span>
         </div>
       </div>
-      <div id="shelfNotesGrid" style="display:grid;grid-template-columns:repeat(auto-fill, 120px);justify-content:start;gap:16px;align-items:start"></div>
+      <div id="shelfNotesGrid" style="display:grid;grid-template-columns:repeat(auto-fill, 120px);justify-content:start;max-width:calc(var(--shelf-max-cols,10)*120px + (var(--shelf-max-cols,10) - 1)*16px);gap:16px;align-items:start"></div>
     </div>
     <div id="shelfEmptyMsg" style="display:none;padding:48px 16px;text-align:center;color:#94a3b8;font-size:13px">
       このフォルダにはまだ項目がありません。<br>
       上部の「+フォルダ」または「+紙」から作成できます。
     </div>
   </div>
+<!-- ノート合成ボックス（フォルダ領域の下に固定表示） -->
+<div id="mergeBox" style="--sidebar-bg:var(--shelf-bg,#fafbfc);--sidebar-text:var(--shelf-title-color,#1e293b);border-top:1px solid var(--sidebar-border,#e2e8f0);background:var(--shelf-bg,#fafbfc);flex-shrink:0;position:sticky;bottom:0;z-index:20;box-shadow:0 -4px 12px rgba(0,0,0,0.06)">
+<style>
+#mergeBox .ms-slot{position:relative;aspect-ratio:1/1;min-height:56px;box-sizing:border-box;border:1px dashed var(--sidebar-border,#cbd5e1);border-radius:8px;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:16px;line-height:1;color:#94a3b8;cursor:default;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+#mergeBox .ms-slot.ms-filled{background:var(--sidebar-active-bg);border-style:solid;color:var(--sidebar-text);font-weight:bold;cursor:pointer}
+#mergeBox .ms-slot.ms-over{outline:2px solid #2563eb;outline-offset:-2px;background:#bfdbfe}
+#mergeBox .ms-slot .ms-n{position:absolute;top:2px;left:4px;font-size:10px;opacity:.6;font-weight:normal}
+#mergeBox .ms-btn{flex:1;font-size:14px;padding:10px 4px;border:1px solid var(--sidebar-border);border-radius:4px;background:var(--sidebar-bg);color:var(--sidebar-text);font-weight:bold;cursor:pointer}
+#mergeBox .ms-btn:disabled{opacity:.5;cursor:default}
+#mergeBox .ms-run{background:#2563eb;color:#fff;border-color:#1d4ed8}
+</style>
+<button type="button" id="mergeToggleBtn" onclick="mergeBoxToggle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:14px 5px;font-size:15px;background:var(--sidebar-bg);border:none;border-radius:0;color:var(--sidebar-text);cursor:pointer;font-weight:bold">ノート合成 <span id="mergeToggleArrow">▸</span></button>
+<div id="mergePanel" style="display:none;padding:4px 20px 14px 20px;max-height:50vh;overflow-y:auto">
+<div id="mergeGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:8px;max-width:760px"></div>
+<div style="display:flex;gap:8px;margin-top:10px;max-width:760px">
+<button type="button" class="ms-btn" onclick="mergeBoxClear()">クリア</button>
+<button type="button" id="mergeRunBtn" class="ms-btn ms-run" onclick="mergeBoxRun()">決定</button>
+</div>
+<div id="mergeMsg" style="font-size:12px;line-height:1.4;margin-top:6px;color:var(--sidebar-text);opacity:.8;min-height:13px;word-break:break-all"></div>
+</div>
+</div>
 </div>
 
 <!-- Editor View -->
