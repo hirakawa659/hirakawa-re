@@ -427,12 +427,16 @@ body.sp-color-off #e .sp-nonzen{background:transparent!important;border-bottom:n
         <span>検出と変換</span><span style="font-size:8px;line-height:1">▾</span>
       </button>
     </div>
+    <!-- ノート分割 -->
+    <button type="button" id="noteSplitBtn" class="linenum-tool-item" onclick="toggleNoteSplitMenu(event)" style="width:58px;padding:3.5px 0;font-size:9.5px;font-weight:bold;line-height:1.15;letter-spacing:-0.4px;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:normal;text-align:center;touch-action:none" title="境界の目印を入れて、ノートを境界ごとに分割">
+      ノート<br>分割
+    </button>
     <!-- 空白色 -->
-    <button type="button" id="spColBtn" class="linenum-tool-item" onclick="tgSpColor()" style="width:58px;padding:5px 0;font-size:10px;font-weight:bold;line-height:1.15;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:nowrap;text-align:center;touch-action:none" title="全角以外の空白の色をON/OFF">
+    <button type="button" id="spColBtn" class="linenum-tool-pinned" onclick="tgSpColor()" style="margin-top:auto;width:58px;padding:5px 0;font-size:10px;font-weight:bold;line-height:1.15;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:nowrap;text-align:center;touch-action:none" title="全角以外の空白の色をON/OFF">
       空白色:OFF
     </button>
     <!-- 管理者用 ()変換 -->
-    <button type="button" id="adminAutoConvertBtn" class="linenum-tool-item" onclick="tgAdminAutoConvert()" style="width:58px;padding:3.5px 0;font-size:9.5px;font-weight:bold;line-height:1.15;letter-spacing:-0.4px;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:normal;text-align:center;touch-action:none" title="管理者用: ( ) と半角スペースを自動的に全角に変換">
+    <button type="button" id="adminAutoConvertBtn" class="linenum-tool-pinned" onclick="tgAdminAutoConvert()" style="width:58px;padding:3.5px 0;font-size:9.5px;font-weight:bold;line-height:1.15;letter-spacing:-0.4px;background:var(--paper-bg,#ffffff);color:var(--text-color,#000000);border:1px solid var(--sidebar-border,#cbd5e1);border-radius:5px;cursor:pointer;white-space:normal;text-align:center;touch-action:none" title="管理者用: ( ) と半角スペースを自動的に全角に変換">
       管理者用<br>()変換OFF
     </button>
     <!-- △、ワープ、▽の順に並べたグループボタン -->
@@ -557,7 +561,8 @@ const APP_REVISIONS = [
     { n: 40, date: '2026-10-06', text: 'アプリスイッチャー等の一時的なresizeでcsが往復し(例:×1.33→×0.71)、z()が現在位置を比例変換→ブラウザがクランプ→その壊れた位置が「保存位置」として記録され、復帰しても元に戻らなかった件の対策。保存位置は行数(cs非依存)で保持してz()はそれ×新csで決める／cs変更直後の自動scrollイベントと、その直後のバックグラウンド保存は記録しない／上限クランプは新レイアウト確定後に行う／復元の再試行(60/180/400ms等のタイマーとResizeObserver)が、開始時に固定した目標値(一時的なcs基準)で、z()が直した正しい位置を上書きしていたため、毎回その時点のcsで目標を再計算するよう変更／「復元ログ」ボタンを行番号ツール内から、上部ツールバーの cs 表示の右隣へ移動（並べ替え処理で左に流れていたため、cs表示と同様に並べ替え対象外にして右端側へ固定）' },
     { n: 41, date: '2026-10-08', text: '機能追加：サイドバー下部に「ノート合成」ボックスを追加。5×4の窓にノートをドラッグ＆ドロップし「決定」で、左上から順に本文をつなげた新規ノートを作成（各ノートの間は1行空け・元のノートは変更しない）。既存の関数・ドラッグ処理は変更せず、末尾に独立した処理として追加' },
     { n: 42, date: '2026-10-08', text: '機能追加：開フォルダ内置換・開フォルダ内検索のバーに「対象: フォルダ名／ノート名」の表示を追加（既存の置換・検索処理は変更せず、表示のみ）' },
-    { n: 43, date: '2026-10-08', text: '仕様変更：開フォルダ内置換は、編集画面（ノートを開いている時）は開いているノート1枚だけを対象に変更。フォルダ全体の置換は棚（フォルダ一覧）の画面から行う' }
+    { n: 43, date: '2026-10-08', text: '仕様変更：開フォルダ内置換は、編集画面（ノートを開いている時）は開いているノート1枚だけを対象に変更。フォルダ全体の置換は棚（フォルダ一覧）の画面から行う' },
+    { n: 44, date: '2026-10-12', text: '機能追加：「検出と変換」の下に「ノート分割」ボタンを追加。分けたい位置で「ここに境界を入れる」を押すと「◆◇◆◇ここで分割◆◇◆◇」の1行が入り、「分割を実行」で境界ごとに新しいノート（元の名前 (1)(2)…）を元ノートの直後に作成。元のノートは変更しない／保存失敗時は追加分を全て取り消す／行全体が目印と完全一致した場合のみ境界扱い／中身が空になる区切りは無視' },
 ];
 const APP_REVISION = APP_REVISIONS[APP_REVISIONS.length - 1].n;
 function initRevisionButton(){
@@ -6685,7 +6690,9 @@ function initToolDragAndDrop(){
 }
 
 /* 右側固定ツールバー（ワープ・紙の色・横の数・特殊コピー・検出・空白色）の並び替え・指なぞりドラッグ＆ドロップ機能 */
-const defaultLinenumToolOrder = ['linenumWarpGroup', 'linenumPaperColorBtn', 'colsBtn', 'linenumCopyBtn', 'detectContainer', 'spColBtn'];
+const defaultLinenumToolOrder = ['linenumWarpGroup', 'linenumPaperColorBtn', 'colsBtn', 'linenumCopyBtn', 'detectContainer', 'noteSplitBtn'];
+// 空白色・管理者用()変換は、ワープや検出などと隔離してツールバーの一番下に固定（並べ替え対象外）
+const pinnedLinenumToolIds = ['spColBtn', 'adminAutoConvertBtn'];
 
 function getLinenumToolOrder(){
     let saved = localStorage.getItem('n_linenum_tool_order_v2') || localStorage.getItem('n_linenum_tool_order_v1');
@@ -6693,12 +6700,15 @@ function getLinenumToolOrder(){
         try{
             let arr = JSON.parse(saved);
             if(Array.isArray(arr) && arr.length > 0){
-                let filtered = arr.filter(id => id !== 'linenumToggleBtn');
+                let filtered = arr.filter(id => id !== 'linenumToggleBtn' && !pinnedLinenumToolIds.includes(id));
                 let set = new Set(filtered);
                 let full = [...filtered];
                 defaultLinenumToolOrder.forEach(id => {
                     if(!set.has(id)){
-                        full.push(id);
+                        // 新ボタン「ノート分割」は、保存済みの並びがあっても「検出と変換」の直下に出す
+                        let at = (id === 'noteSplitBtn') ? full.indexOf('detectContainer') : -1;
+                        if(at >= 0) full.splice(at + 1, 0, id);
+                        else full.push(id);
                     }
                 });
                 return full;
@@ -6712,9 +6722,15 @@ function applyLinenumToolOrder(orderList){
     const toolbar = document.getElementById('linenumLeftToolBar');
     if(!toolbar) return;
     orderList.forEach(id => {
+        if(pinnedLinenumToolIds.includes(id)) return;
         let el = document.getElementById(id);
         if(el) toolbar.appendChild(el);
     });
+    pinnedLinenumToolIds.forEach(id => {   // 固定ボタンは常に最後（＝一番下）
+        let el = document.getElementById(id);
+        if(el) toolbar.appendChild(el);
+    });
+    orderList = orderList.filter(id => !pinnedLinenumToolIds.includes(id));
     localStorage.setItem('n_linenum_tool_order_v2', JSON.stringify(orderList));
 }
 
@@ -10366,6 +10382,221 @@ try{
 }
 })();
 
+/* ============================================
+   ノート分割機能
+   本文に「目印の行」を入れておき、実行すると目印ごとに区切って新しいノートを作る。
+   ・エディタのDOMは目印行の挿入／削除以外いじらない（普通の1行として扱う）
+   ・元のノートは変更しない（目印の行も残る）
+   ・保存に失敗したら、追加したノートを全部取り消す
+   ============================================ */
+(function(){
+function initNoteSplit(){   // メニューのHTMLはこのスクリプトより後ろにあるため、読み込み完了後に初期化する
+try{
+    const MARK = '◆◇◆◇ここで分割◆◇◆◇';
+    const menuEl = document.getElementById('noteSplitMenu');
+    const btnEl = document.getElementById('noteSplitBtn');
+    const countEl = document.getElementById('noteSplitCount');
+    if(!menuEl || !btnEl) return;
+
+    function textOfHtml(html){
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        return (tmp.textContent || '').replace(/[​-‍⁠﻿]/g, '').trim();   // 前後の空白（全角含む）と不可視文字は無視
+    }
+    function isMarkLine(html){ return textOfHtml(html) === MARK; }   // 行全体が目印と完全一致したときだけ目印とみなす
+    function isBlankLine(html){ return textOfHtml(html) === ''; }
+
+    // 本文HTMLを「1行ずつのHTML」の配列にする（合成ノート機能と同じ考え方）
+    function linesFromHtml(html){
+        const tpl = document.createElement('template');
+        tpl.innerHTML = sanitizeStoryHtml(html || '') || '';
+        const lines = [];
+        let buf = null;
+        const flush = () => { if(buf !== null){ lines.push('<div>' + buf + '</div>'); buf = null; } };
+        tpl.content.childNodes.forEach((nd) => {
+            if(nd.nodeType === 1 && (nd.tagName === 'DIV' || nd.tagName === 'P')){
+                flush();
+                lines.push(nd.outerHTML);
+            }else if(nd.nodeType === 1 && nd.tagName === 'BR'){
+                if(buf === null) buf = '';
+                buf += '<br>';
+                flush();
+            }else if(nd.nodeType === 1){
+                buf = (buf === null ? '' : buf) + nd.outerHTML;
+            }else if(nd.nodeType === 3){
+                const esc = escapeHtml(nd.nodeValue);
+                if(esc !== '') buf = (buf === null ? '' : buf) + esc;
+            }
+        });
+        flush();
+        return lines;
+    }
+
+    // 目印で区切る。各ノートの先頭・末尾の空行は除き、中身のないノートは作らない。
+    function splitLines(lines){
+        const groups = [[]];
+        lines.forEach((ln) => {
+            if(isMarkLine(ln)){
+                if(groups[groups.length - 1].length) groups.push([]);
+            }else{
+                groups[groups.length - 1].push(ln);
+            }
+        });
+        const result = [];
+        groups.forEach((gp) => {
+            let a = 0, b = gp.length;
+            while(a < b && isBlankLine(gp[a])) a++;
+            while(b > a && isBlankLine(gp[b - 1])) b--;
+            if(b > a) result.push(gp.slice(a, b));
+        });
+        return result;
+    }
+
+    function currentHtml(){
+        try{ if(typeof flushPendingHeavyTask === 'function') flushPendingHeavyTask(); }catch(_){}
+        return e.innerHTML;
+    }
+    function countMarks(){
+        if(!f) return 0;
+        return linesFromHtml(e.innerHTML).filter(isMarkLine).length;
+    }
+
+    function findLocation(id, items){
+        for(let i = 0; i < items.length; i++){
+            if(items[i].id === id) return { list: items, index: i };
+            if(items[i].children){
+                const r2 = findLocation(id, items[i].children);
+                if(r2) return r2;
+            }
+        }
+        return null;
+    }
+
+    // ---- メニュー ----
+    function positionMenu(){
+        const rect = btnEl.getBoundingClientRect();
+        const winW = window.innerWidth || document.documentElement.clientWidth;
+        const winH = window.innerHeight || document.documentElement.clientHeight;
+        const mw = menuEl.offsetWidth || 230;
+        const mh = menuEl.offsetHeight || 200;
+        let left = rect.right + 4;
+        if(left + mw > winW - 8) left = rect.left - mw - 4;   // ツールバーは右端にあるので左側に出す
+        left = Math.max(8, Math.min(left, winW - mw - 8));
+        let top = rect.top;
+        if(top + mh > winH - 8) top = Math.max(8, winH - mh - 8);
+        menuEl.style.left = left + 'px';
+        menuEl.style.top = top + 'px';
+    }
+    function closeMenu(){ menuEl.style.display = 'none'; }
+    function refreshCount(){
+        if(countEl){
+            const n = countMarks();
+            countEl.textContent = '境界 ' + n + ' 個';
+        }
+    }
+    window.toggleNoteSplitMenu = function(ev){
+        if(ev) ev.stopPropagation();
+        if(menuEl.style.display === 'flex'){ closeMenu(); return; }
+        refreshCount();
+        menuEl.style.display = 'flex';
+        positionMenu();
+    };
+    window.addEventListener('click', (ev) => {
+        if(menuEl.style.display === 'flex' && !btnEl.contains(ev.target) && !menuEl.contains(ev.target)) closeMenu();
+    });
+    window.addEventListener('resize', () => { if(menuEl.style.display === 'flex') positionMenu(); });
+    // メニューを押してもエディタのカーソル位置が外れないようにする
+    menuEl.addEventListener('mousedown', (ev) => { ev.preventDefault(); });
+
+    // ---- 境界の目印を入れる ----
+    window.noteSplitInsertMark = function(){
+        closeMenu();
+        if(!f){ alert('ノートが開かれていません。'); return; }
+        try{
+            e.focus();
+            const sel = window.getSelection();
+            if(lastActiveRange && e.contains(lastActiveRange.startContainer)){
+                const rg = lastActiveRange.cloneRange();
+                rg.collapse(false);   // 範囲選択中でも文字を消さないよう、選択の末尾にカーソルを置く
+                sel.removeAllRanges();
+                sel.addRange(rg);
+            }else if(!(sel.rangeCount && e.contains(sel.anchorNode))){
+                const rg = document.createRange();
+                rg.selectNodeContents(e);
+                rg.collapse(false);
+                sel.removeAllRanges();
+                sel.addRange(rg);
+            }
+            // 通常の入力と同じ経路（execCommand）で入れるので、元に戻す・自動保存もそのまま働く
+            document.execCommand('insertParagraph');
+            document.execCommand('insertText', false, MARK);
+            document.execCommand('insertParagraph');
+        }catch(err){
+            console.error('境界の挿入に失敗:', err);
+            alert('境界を入れられませんでした: ' + (err && err.message ? err.message : err));
+        }
+    };
+
+    // ---- 境界をすべて消す ----
+    window.noteSplitRemoveMarks = function(){
+        closeMenu();
+        if(!f){ alert('ノートが開かれていません。'); return; }
+        const targets = Array.from(e.children).filter(ch => isMarkLine(ch.outerHTML));
+        if(!targets.length){ alert('このノートに境界はありません。'); return; }
+        if(!confirm('このノートの境界 ' + targets.length + ' 個を消します。よろしいですか？')) return;
+        targets.forEach(ch => ch.remove());
+        if(!e.children.length) e.innerHTML = '<div><br></div>';
+        if(typeof e.oninput === 'function') e.oninput();   // 通常の編集後と同じ保存処理を走らせる
+    };
+
+    // ---- 分割を実行する ----
+    window.noteSplitRun = function(){
+        closeMenu();
+        if(!f){ alert('ノートが開かれていません。'); return; }
+        const orig = g(f);
+        if(!orig || orig.type !== 'file'){ alert('ノートが見つかりません。'); return; }
+        const marks = linesFromHtml(currentHtml()).filter(isMarkLine).length;
+        if(!marks){ alert('境界がありません。\n分けたい位置にカーソルを置いて「ここに境界を入れる」を押してください。'); return; }
+        const parts = splitLines(linesFromHtml(e.innerHTML));
+        if(parts.length < 2){
+            alert('境界で区切られた中身のあるノートが2つ以上ありません。\n（境界が先頭・末尾にあるだけ、境界が連続している、などの場合は分割しません）');
+            return;
+        }
+        if(!confirm('境界 ' + marks + ' 個で、' + parts.length + ' 個のノートを作ります。\n元のノートはそのまま残ります。よろしいですか？')) return;
+
+        try{ if(typeof s === 'function') s(); }catch(_){}   // 開いているノートの最新内容を保存（アプリ標準の処理）
+        const loc = findLocation(orig.id, d.r || []);
+        if(!loc){ alert('ノートの保存場所が見つかりません。'); return; }
+        const base = orig.name || '無題';
+        const stamp = Date.now();
+        const newItems = parts.map((lines, i) => ({
+            id: 'i_' + stamp + '_' + i + '_' + Math.random().toString(36).substr(2, 4),
+            type: 'file',
+            name: base + ' (' + (i + 1) + ')',
+            content: lines.join('')
+        }));
+        const at = loc.list.indexOf(orig) + 1;
+        loc.list.splice(at, 0, ...newItems);   // 元ノートのすぐ後ろ（同じフォルダ）に入れる
+        try{
+            localStorage.setItem('n_d', JSON.stringify(d));
+        }catch(err){
+            loc.list.splice(loc.list.indexOf(newItems[0]), newItems.length);   // 保存できなければ追加を全部取り消す
+            alert('保存に失敗しました（容量不足の可能性）。ノートは作成していません。');
+            return;
+        }
+        try{ if(typeof setGlobalData === 'function') setGlobalData(d); }catch(_){}
+        try{ if(typeof scheduleCloudSync === 'function') scheduleCloudSync(); }catch(_){}
+        try{ r(); }catch(err){ console.error(err); }
+        try{ if(currentViewMode === 'shelf' && typeof renderShelfView === 'function') renderShelfView(); }catch(err){ console.error(err); }
+        alert('✨ ' + newItems.length + ' 個のノートを作成しました。\n（' + base + ' (1) 〜 (' + newItems.length + ')）');
+    };
+}catch(err){
+    console.error('ノート分割の初期化エラー:', err);
+}
+}
+if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initNoteSplit); else initNoteSplit();
+})();
+
 </script>
 
 <!-- 紙・フォルダの管理モーダル -->
@@ -11020,6 +11251,14 @@ try{
       <div id="snapshotListContainer" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
   </div>
+</div>
+<!-- ノート分割メニュー -->
+<div id="noteSplitMenu" style="display:none;position:fixed;z-index:999999;background:#ffffff;border:1px solid #cbd5e1;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,0.25);padding:8px;flex-direction:column;gap:6px;width:230px;color:#0f172a">
+  <div id="noteSplitCount" style="font-size:11px;font-weight:bold;color:#475569;padding:0 2px">境界 0 個</div>
+  <button type="button" onclick="noteSplitInsertMark()" style="width:100%;text-align:left;background:#f8fafc;border:1px solid #cbd5e1;color:#1e3a8a;font-size:12px;font-weight:bold;padding:7px 10px;border-radius:5px;cursor:pointer">ここに境界を入れる</button>
+  <button type="button" onclick="noteSplitRun()" style="width:100%;text-align:left;background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;font-size:12px;font-weight:bold;padding:7px 10px;border-radius:5px;cursor:pointer">分割を実行</button>
+  <button type="button" onclick="noteSplitRemoveMarks()" style="width:100%;text-align:left;background:#f8fafc;border:1px solid #cbd5e1;color:#b91c1c;font-size:12px;font-weight:bold;padding:7px 10px;border-radius:5px;cursor:pointer">境界をすべて消す</button>
+  <div style="font-size:10px;line-height:1.45;color:#64748b;padding:0 2px">境界は「◆◇◆◇ここで分割◆◇◆◇」の1行です。実行すると境界ごとに新しいノートを作ります（元のノートは残ります）。</div>
 </div>
 <div id="selectionCountBadge" style="position:fixed;top:54px;left:50%;transform:translate(-50%,-6px);background:rgba(15,23,42,0.92);color:#f8fafc;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:500;box-shadow:0 4px 14px rgba(0,0,0,0.2);z-index:10000;display:none;pointer-events:none;align-items:center;gap:5px;backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.12);opacity:0;transition:opacity 0.2s ease,transform 0.2s ease;white-space:nowrap"></div>
 <script>
